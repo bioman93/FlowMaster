@@ -1,0 +1,105 @@
+﻿<Window x:Class="FlowMaster.Desktop.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:FlowMaster.Desktop.ViewModels"
+        xmlns:views="clr-namespace:FlowMaster.Desktop.Views"
+        mc:Ignorable="d"
+        Title="{Binding Title}" Height="720" Width="1024"
+        WindowStartupLocation="CenterScreen">
+    
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+            <views:DashboardView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:WriteViewModel}">
+            <views:WriteView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:DetailViewModel}">
+            <views:DetailView />
+        </DataTemplate>
+        
+        <!-- Styles -->
+        <Style x:Key="MenuButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#333333"/>
+            <Setter Property="Padding" Value="15,10"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#D0C8BF"/> <!-- Slightly darker Sand -->
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="250" /> <!-- Sidebar -->
+            <ColumnDefinition Width="*" />    <!-- Content -->
+        </Grid.ColumnDefinitions>
+
+        <!-- Sidebar (Hyundai Sand #e4dcd3) -->
+        <Border Grid.Column="0" Background="#e4dcd3">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" /> <!-- Logo -->
+                    <RowDefinition Height="*" />    <!-- Menu -->
+                    <RowDefinition Height="Auto" /> <!-- User Profile -->
+                </Grid.RowDefinitions>
+
+                <!-- 1. App Title / Logo -->
+                <TextBlock Grid.Row="0" Text="FlowMaster" 
+                           Foreground="#002c5f" FontSize="24" FontWeight="Bold" 
+                           Margin="20,30,20,30" />
+
+                <!-- 2. Menu Items -->
+                <StackPanel Grid.Row="1">
+                    <Button Command="{Binding NavigateDashboardCommand}" Style="{StaticResource MenuButton}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📊" Margin="0,0,10,0"/>
+                            <TextBlock Text="대시보드" FontSize="16"/>
+                        </StackPanel>
+                    </Button>
+                    <Button Command="{Binding NavigateWriteCommand}" Style="{StaticResource MenuButton}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📝" Margin="0,0,10,0"/>
+                            <TextBlock Text="결재 작성" FontSize="16"/>
+                        </StackPanel>
+                    </Button>
+                    <!-- More buttons can be added here -->
+                </StackPanel>
+
+                <!-- 3. User Profile / Switcher -->
+                <Border Grid.Row="2" Background="#d0c8bf" Padding="15">
+                    <StackPanel>
+                        <TextBlock Text="Current User:" FontSize="12" Foreground="#555"/>
+                        <ComboBox ItemsSource="{Binding AvailableUsers}" 
+                                  SelectedItem="{Binding CurrentUser}"
+                                  DisplayMemberPath="Name" 
+                                  Margin="0,5,0,0">
+                            <!-- Simple user switcher for testing -->
+                        </ComboBox>
+                        <TextBlock Text="{Binding CurrentUser.Role}" FontSize="11" Foreground="#002c5f" Margin="0,5,0,0"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- Main Content (Hyundai Light Sand #F6F3F2) -->
+        <Border Grid.Column="1" Background="#F6F3F2">
+            <ContentControl Content="{Binding CurrentView}" Margin="20" />
+        </Border>
+    </Grid>
+</Window>
