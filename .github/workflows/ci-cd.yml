@@ -13,8 +13,6 @@ on:
 env:
   SOLUTION_FILE: FlowMaster.sln
   BUILD_CONFIGURATION: Release
-  DOTNET_VERSION: '8.0.x'
-  RUNTIME_ID: win-x64
 
 jobs:
   build:
@@ -27,28 +25,28 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Setup .NET
+    - name: Setup .NET SDK
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
+        dotnet-version: '8.0.x'
 
-    - name: Restore Dependencies
-      run: dotnet restore ${{ env.SOLUTION_FILE }} -r ${{ env.RUNTIME_ID }}
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
 
-    - name: Build Solution
-      run: dotnet build ${{ env.SOLUTION_FILE }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-restore -r ${{ env.RUNTIME_ID }}
+    - name: Setup NuGet
+      uses: nuget/setup-nuget@v1
 
-    - name: Run Tests
-      run: dotnet test ${{ env.SOLUTION_FILE }} --configuration ${{ env.BUILD_CONFIGURATION }} --no-build --verbosity normal
-      continue-on-error: true  # 테스트 프로젝트가 없어도 진행
+    - name: Restore NuGet Packages
+      run: nuget restore ${{ env.SOLUTION_FILE }}
 
-    - name: Publish Application
+    - name: Build with MSBuild
+      run: msbuild ${{ env.SOLUTION_FILE }} /p:Configuration=${{ env.BUILD_CONFIGURATION }} /p:Platform="Any CPU" /t:Rebuild
+
+    - name: Copy Build Output
       run: |
-        dotnet publish FlowMaster.Desktop/FlowMaster.Desktop.csproj `
-          --configuration ${{ env.BUILD_CONFIGURATION }} `
-          --runtime ${{ env.RUNTIME_ID }} `
-          --output ./publish `
-          --self-contained false
+        New-Item -ItemType Directory -Force -Path ./publish
+        Copy-Item -Path "FlowMaster.Desktop/bin/${{ env.BUILD_CONFIGURATION }}/*" -Destination ./publish -Recurse -Force
+      shell: pwsh
 
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
@@ -76,6 +74,7 @@ jobs:
     - name: Create Release ZIP
       run: |
         Compress-Archive -Path ./publish/* -DestinationPath FlowMaster-Release.zip
+      shell: pwsh
 
     - name: Get Version
       id: version
@@ -83,6 +82,7 @@ jobs:
         $date = Get-Date -Format "yyyy.MM.dd"
         $shortSha = "${{ github.sha }}".Substring(0, 7)
         echo "VERSION=v$date-$shortSha" >> $env:GITHUB_OUTPUT
+      shell: pwsh
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
