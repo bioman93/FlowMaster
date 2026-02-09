@@ -97,11 +97,15 @@ jobs:
 
     - name: Create Release ZIP
       run: |
-        if (Test-Path ./publish -and (Get-ChildItem ./publish).Count -gt 0) {
+        $pathExists = Test-Path ./publish
+        $fileCount = (Get-ChildItem ./publish -ErrorAction SilentlyContinue | Measure-Object).Count
+        
+        if ($pathExists -and $fileCount -gt 0) {
           Compress-Archive -Path ./publish/* -DestinationPath FlowMaster-Release.zip -Force
-          Write-Host "ZIP created successfully"
+          Write-Host "ZIP created successfully with $fileCount files"
         } else {
           Write-Host "ERROR: publish folder is empty or does not exist"
+          Write-Host "Path exists: $pathExists, File count: $fileCount"
           exit 1
         }
       shell: pwsh
