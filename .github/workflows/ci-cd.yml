@@ -14,6 +14,9 @@ env:
   SOLUTION_FILE: FlowMaster.sln
   BUILD_CONFIGURATION: Release
 
+permissions:
+  contents: write  # Release 생성에 필요
+
 jobs:
   build:
     name: Build & Test
