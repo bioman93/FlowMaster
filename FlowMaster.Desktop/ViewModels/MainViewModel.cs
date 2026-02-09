@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Windows;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FlowMaster.Core.Services;
 using FlowMaster.Domain.Interfaces;
 using FlowMaster.Domain.Models;
+using FlowMaster.Infrastructure.Repositories;
+using FlowMaster.Infrastructure.Utilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Win32;
 
 namespace FlowMaster.Desktop.ViewModels
 {
@@ -15,6 +19,7 @@ namespace FlowMaster.Desktop.ViewModels
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly IUserRepository _userRepo;
+        private readonly ExternalDbRepository _externalDb;
 
         // Current User State
         private User _currentUser;
@@ -55,12 +60,15 @@ namespace FlowMaster.Desktop.ViewModels
         // Commands
         public ICommand NavigateDashboardCommand { get; }
         public ICommand NavigateWriteCommand { get; }
+        public ICommand NavigateTestInputCommand { get; }
         public ICommand SwitchUserCommand { get; }
+        public ICommand ExtractSchemaCommand { get; }
 
-        public MainViewModel(IServiceProvider serviceProvider, IUserRepository userRepo)
+        public MainViewModel(IServiceProvider serviceProvider, IUserRepository userRepo, ExternalDbRepository externalDb)
         {
             _serviceProvider = serviceProvider;
             _userRepo = userRepo;
+            _externalDb = externalDb;
 
             // Load Test Users
             LoadUsers();
@@ -68,7 +76,9 @@ namespace FlowMaster.Desktop.ViewModels
             // Set Initial View
             NavigateDashboardCommand = new RelayCommand(NavigateToDashboard);
             NavigateWriteCommand = new RelayCommand(NavigateToWrite);
+            NavigateTestInputCommand = new RelayCommand(NavigateToTestInput);
             SwitchUserCommand = new RelayCommand<User>(OnUserSwitched);
+            ExtractSchemaCommand = new RelayCommand(ExtractDbSchema);
 
             NavigateToDashboard();
         }
@@ -108,6 +118,25 @@ namespace FlowMaster.Desktop.ViewModels
             CurrentView = vm;
         }
 
+        private void NavigateToTestInput()
+        {
+            Title = "FlowMaster - 테스트 결과 입력";
+            var vm = new TypeSelectionViewModel(
+                _externalDb,
+                OnTypeSelected,
+                NavigateToDashboard
+            );
+            CurrentView = vm;
+        }
+
+        private async void OnTypeSelected(string tableType, ApprovalDocument cloneSource)
+        {
+            Title = $"FlowMaster - {tableType} 테스트 입력";
+            var vm = new TestInputViewModel(_externalDb, NavigateToDashboard);
+            await vm.InitializeNewDocumentAsync(tableType, cloneSource, CurrentUser, AvailableUsers);
+            CurrentView = vm;
+        }
+
         private void OnUserSwitched(User newUser)
         {
             if (newUser != null)
@@ -115,6 +144,32 @@ namespace FlowMaster.Desktop.ViewModels
                 CurrentUser = newUser;
                 // Reload current view to reflect permissions if needed
                 NavigateToDashboard(); 
+            }
+        }
+
+        private void ExtractDbSchema()
+        {
+            var openFileDialog = new OpenFileDialog
+            {
+                Title = "분석할 SQLite DB 파일 선택",
+                Filter = "SQLite Database (*.db;*.sqlite;*.sqlite3)|*.db;*.sqlite;*.sqlite3|All Files (*.*)|*.*",
+                CheckFileExists = true
+            };
+
+            if (openFileDialog.ShowDialog() == true)
+            {
+                try
+                {
+                    var outputPath = DbSchemaExtractor.ExtractSchema(openFileDialog.FileName);
+                    MessageBox.Show($"스키마 추출 완료!\n\n출력 파일:\n{outputPath}", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
+                    
+                    // 출력 파일 열기
+                    System.Diagnostics.Process.Start("notepad.exe", outputPath);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"스키마 추출 실패:\n{ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
             }
         }
     }

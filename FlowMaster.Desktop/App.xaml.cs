@@ -34,6 +34,7 @@ namespace FlowMaster.Desktop
             services.AddSingleton<IApprovalRepository, SqliteApprovalRepository>();
             services.AddSingleton<INotificationService, MockNotificationService>(); 
             services.AddSingleton<IApprovalService, ApprovalService>();
+            services.AddSingleton<ExternalDbRepository>(); // 외부 DB 연동
 
             // ViewModels
             services.AddTransient<MainViewModel>();

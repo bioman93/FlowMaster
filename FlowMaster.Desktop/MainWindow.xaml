@@ -19,6 +19,12 @@
         <DataTemplate DataType="{x:Type vm:DetailViewModel}">
             <views:DetailView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:TypeSelectionViewModel}">
+            <views:TypeSelectionView />
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:TestInputViewModel}">
+            <views:TestInputView />
+        </DataTemplate>
         
         <!-- Styles -->
         <Style x:Key="MenuButton" TargetType="Button">
@@ -78,7 +84,21 @@
                             <TextBlock Text="결재 작성" FontSize="16"/>
                         </StackPanel>
                     </Button>
-                    <!-- More buttons can be added here -->
+                    <Button Command="{Binding NavigateTestInputCommand}" Style="{StaticResource MenuButton}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📋" Margin="0,0,10,0"/>
+                            <TextBlock Text="테스트 결과 입력" FontSize="16"/>
+                        </StackPanel>
+                    </Button>
+                    
+                    <!-- Tools Section -->
+                    <TextBlock Text="도구" FontSize="12" Foreground="#888" Margin="15,20,0,5"/>
+                    <Button Command="{Binding ExtractSchemaCommand}" Style="{StaticResource MenuButton}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🔍" Margin="0,0,10,0"/>
+                            <TextBlock Text="DB 스키마 추출" FontSize="16"/>
+                        </StackPanel>
+                    </Button>
                 </StackPanel>
 
                 <!-- 3. User Profile / Switcher -->
