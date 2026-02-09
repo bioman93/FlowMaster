@@ -42,18 +42,36 @@ jobs:
     - name: Build with MSBuild
       run: msbuild ${{ env.SOLUTION_FILE }} /p:Configuration=${{ env.BUILD_CONFIGURATION }} /p:Platform="Any CPU" /t:Rebuild
 
-    - name: Copy Build Output
+    - name: Prepare Publish Folder
       run: |
         New-Item -ItemType Directory -Force -Path ./publish
-        Copy-Item -Path "FlowMaster.Desktop/bin/${{ env.BUILD_CONFIGURATION }}/*" -Destination ./publish -Recurse -Force
+        
+        # win-x64 빌드 출력 경로 확인
+        $outputPath = "FlowMaster.Desktop/bin/${{ env.BUILD_CONFIGURATION }}/net472/win-x64"
+        if (Test-Path $outputPath) {
+          Copy-Item -Path "$outputPath/*" -Destination ./publish -Recurse -Force
+        } else {
+          # 대체 경로
+          $altPath = "FlowMaster.Desktop/bin/${{ env.BUILD_CONFIGURATION }}/net472"
+          if (Test-Path $altPath) {
+            Copy-Item -Path "$altPath/*" -Destination ./publish -Recurse -Force
+          } else {
+            # 모든 Release 출력 복사
+            Copy-Item -Path "FlowMaster.Desktop/bin/${{ env.BUILD_CONFIGURATION }}/*" -Destination ./publish -Recurse -Force
+          }
+        }
+        
+        # 결과 확인
+        Get-ChildItem -Path ./publish -Recurse | Select-Object FullName
       shell: pwsh
 
     - name: Upload Build Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: FlowMaster-${{ github.sha }}
+        name: FlowMaster-Build
         path: ./publish
         retention-days: 30
+        if-no-files-found: error
 
   release:
     name: Create Release
@@ -68,12 +86,24 @@ jobs:
     - name: Download Build Artifacts
       uses: actions/download-artifact@v4
       with:
-        name: FlowMaster-${{ github.sha }}
+        name: FlowMaster-Build
         path: ./publish
+
+    - name: List Downloaded Files
+      run: |
+        Write-Host "Downloaded files:"
+        Get-ChildItem -Path ./publish -Recurse | Select-Object FullName
+      shell: pwsh
 
     - name: Create Release ZIP
       run: |
-        Compress-Archive -Path ./publish/* -DestinationPath FlowMaster-Release.zip
+        if (Test-Path ./publish -and (Get-ChildItem ./publish).Count -gt 0) {
+          Compress-Archive -Path ./publish/* -DestinationPath FlowMaster-Release.zip -Force
+          Write-Host "ZIP created successfully"
+        } else {
+          Write-Host "ERROR: publish folder is empty or does not exist"
+          exit 1
+        }
       shell: pwsh
 
     - name: Get Version
@@ -85,7 +115,7 @@ jobs:
       shell: pwsh
 
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.version.outputs.VERSION }}
         name: FlowMaster ${{ steps.version.outputs.VERSION }}
