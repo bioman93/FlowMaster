@@ -7,17 +7,23 @@ using System.Windows;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FlowMaster.Domain.DTOs;
 using FlowMaster.Domain.Models;
 using FlowMaster.Infrastructure.Repositories;
+using FlowMaster.Infrastructure.Services;
 
 namespace FlowMaster.Desktop.ViewModels
 {
     public class TestInputViewModel : ObservableObject
     {
         private readonly ExternalDbRepository _externalDb;
+        private readonly SqliteApprovalRepository _internalDb;
+        private readonly ApprovalApiClient _apiClient;
         private readonly Action _onGoBack;
         private User _currentUser;
         private bool _isNewDocument;
+        private bool _useInternalDb; // 내부 DB 사용 여부
+        private string _approvalId; // API 결재 ID (APV-xxx)
 
         #region Properties
 
@@ -114,8 +120,14 @@ namespace FlowMaster.Desktop.ViewModels
         // Visibility helpers
         public Visibility ShowDescription => TableType == "BA2" ? Visibility.Visible : Visibility.Collapsed;
         public Visibility ShowApproverComment => !string.IsNullOrEmpty(ApproverComment) ? Visibility.Visible : Visibility.Collapsed;
-        public Visibility CanSubmit => _isNewDocument || StatusText == "작성중" ? Visibility.Visible : Visibility.Collapsed;
+        // 작성중, 임시저장 상태면 결재 상신 가능
+        public Visibility CanSubmit => (StatusText == "작성중" || StatusText == "임시저장" || _isNewDocument) ? Visibility.Visible : Visibility.Collapsed;
         public Visibility CanApprove => StatusText == "승인대기" && _currentUser?.Role == UserRole.Approver ? Visibility.Visible : Visibility.Collapsed;
+
+        // 승인완료/반려 상태면 수정 불가
+        public bool IsReadOnly => StatusText == "승인완료" || StatusText == "반려";
+        public bool CanEdit => !IsReadOnly;
+        public Visibility CanSave => IsReadOnly ? Visibility.Collapsed : Visibility.Visible;
 
         #endregion
 
@@ -129,9 +141,11 @@ namespace FlowMaster.Desktop.ViewModels
 
         #endregion
 
-        public TestInputViewModel(ExternalDbRepository externalDb, Action onGoBack)
+        public TestInputViewModel(ExternalDbRepository externalDb, SqliteApprovalRepository internalDb, ApprovalApiClient apiClient, Action onGoBack)
         {
             _externalDb = externalDb;
+            _internalDb = internalDb;
+            _apiClient = apiClient;
             _onGoBack = onGoBack;
 
             GoBackCommand = new RelayCommand(() => _onGoBack?.Invoke());
@@ -190,13 +204,21 @@ namespace FlowMaster.Desktop.ViewModels
             _currentUser = currentUser;
             AvailableApprovers = approvers;
 
-            if (!_externalDb.IsConnected)
+            ApprovalDocument doc = null;
+
+            // 외부 DB 연결되면 외부 DB에서 조회, 아니면 내부 DB 사용
+            if (_externalDb != null && _externalDb.IsConnected)
             {
-                MessageBox.Show("외부 DB에 연결되지 않았습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
-                return;
+                doc = await _externalDb.GetDocumentWithChecklistAsync(docId);
+                _useInternalDb = false;
+            }
+            else
+            {
+                // 내부 DB에서 조회
+                doc = await _internalDb.GetDocumentAsync(docId);
+                _useInternalDb = true;
             }
 
-            var doc = await _externalDb.GetDocumentWithChecklistAsync(docId);
             if (doc == null)
             {
                 MessageBox.Show("문서를 찾을 수 없습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -212,13 +234,16 @@ namespace FlowMaster.Desktop.ViewModels
             Description = doc.Description;
             ApproverComment = doc.ApproverComment;
             ApprovalDate = doc.ApprovalTime?.ToString("yyyy-MM-dd") ?? "";
-            StatusText = doc.Status.ToString();
-            StatusColor = GetStatusColor(doc.Status.ToString());
+            StatusText = GetStatusText(doc.Status);
+            StatusColor = GetStatusColor(StatusText);
 
             ChecklistItems.Clear();
-            foreach (var item in doc.ChecklistItems)
+            if (doc.ChecklistItems != null)
             {
-                ChecklistItems.Add(item);
+                foreach (var item in doc.ChecklistItems)
+                {
+                    ChecklistItems.Add(item);
+                }
             }
 
             OnPropertyChanged(nameof(ChecklistItemCount));
@@ -226,6 +251,9 @@ namespace FlowMaster.Desktop.ViewModels
             OnPropertyChanged(nameof(ShowApproverComment));
             OnPropertyChanged(nameof(CanSubmit));
             OnPropertyChanged(nameof(CanApprove));
+            OnPropertyChanged(nameof(IsReadOnly));
+            OnPropertyChanged(nameof(CanEdit));
+            OnPropertyChanged(nameof(CanSave));
         }
 
         private void LoadDefaultChecklist(string tableType)
@@ -261,10 +289,26 @@ namespace FlowMaster.Desktop.ViewModels
         {
             switch (status)
             {
+                case "승인대기":
                 case "Pending": return "#ff9800";
+                case "승인완료":
                 case "Approved": return "#4CAF50";
+                case "반려":
                 case "Rejected": return "#f44336";
                 default: return "#666";
+            }
+        }
+
+        private string GetStatusText(ApprovalStatus status)
+        {
+            switch (status)
+            {
+                case ApprovalStatus.TempSaved: return "임시저장";
+                case ApprovalStatus.Pending: return "승인대기";
+                case ApprovalStatus.Approved: return "승인완료";
+                case ApprovalStatus.Rejected: return "반려";
+                case ApprovalStatus.Canceled: return "취소됨";
+                default: return "작성중";
             }
         }
 
@@ -272,12 +316,6 @@ namespace FlowMaster.Desktop.ViewModels
         {
             try
             {
-                if (!_externalDb.IsConnected)
-                {
-                    MessageBox.Show("외부 DB에 연결되지 않았습니다.", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-
                 var doc = new ApprovalDocument
                 {
                     DocId = DocId,
@@ -286,17 +324,40 @@ namespace FlowMaster.Desktop.ViewModels
                     GenType = GenType,
                     InjType = InjType,
                     WriterName = WriterName,
+                    WriterId = _currentUser?.UserId ?? "Unknown",
                     Description = Description,
                     CurrentApproverId = SelectedApprover?.UserId,
                     CreateDate = DateTime.Now,
+                    UpdateDate = DateTime.Now,
                     Status = ApprovalStatus.TempSaved
                 };
 
-                DocId = await _externalDb.SaveDocumentAsync(doc);
-                await _externalDb.SaveChecklistItemsAsync(DocId, ChecklistItems.ToList());
+                if (_externalDb != null && _externalDb.IsConnected)
+                {
+                    // 외부 DB 사용
+                    DocId = await _externalDb.SaveDocumentAsync(doc);
+                    await _externalDb.SaveChecklistItemsAsync(DocId, ChecklistItems.ToList());
+                    _useInternalDb = false;
+                }
+                else
+                {
+                    // 내부 DB 사용 (fallback)
+                    if (_isNewDocument || DocId == 0)
+                    {
+                        DocId = await _internalDb.CreateDocumentAsync(doc);
+                    }
+                    else
+                    {
+                        doc.DocId = DocId;
+                        await _internalDb.UpdateDocumentAsync(doc);
+                    }
+                    await _internalDb.SaveChecklistItemsAsync(DocId, ChecklistItems.ToList());
+                    _useInternalDb = true;
+                }
 
                 _isNewDocument = false;
-                MessageBox.Show("저장되었습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
+                string dbType = _useInternalDb ? "(내부 DB)" : "(외부 DB)";
+                MessageBox.Show($"저장되었습니다. {dbType}", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
@@ -312,30 +373,171 @@ namespace FlowMaster.Desktop.ViewModels
                 return;
             }
 
-            await SaveAsync();
+            try
+            {
+                // 먼저 내부 DB에 저장 (임시저장 → Pending)
+                var doc = new ApprovalDocument
+                {
+                    DocId = DocId,
+                    Title = Title,
+                    TableType = TableType,
+                    GenType = GenType,
+                    InjType = InjType,
+                    WriterName = WriterName,
+                    WriterId = _currentUser?.UserId ?? "Unknown",
+                    Description = Description,
+                    CurrentApproverId = SelectedApprover.UserId,
+                    CreateDate = DateTime.Now,
+                    UpdateDate = DateTime.Now,
+                    Status = ApprovalStatus.Pending
+                };
 
-            StatusText = "승인대기";
-            StatusColor = "#ff9800";
-            OnPropertyChanged(nameof(CanSubmit));
-            OnPropertyChanged(nameof(CanApprove));
+                // 내부 DB 저장
+                if (_isNewDocument || DocId == 0)
+                {
+                    DocId = await _internalDb.CreateDocumentAsync(doc);
+                }
+                else
+                {
+                    doc.DocId = DocId;
+                    await _internalDb.UpdateDocumentAsync(doc);
+                }
+                await _internalDb.SaveChecklistItemsAsync(DocId, ChecklistItems.ToList());
 
-            MessageBox.Show("결재가 상신되었습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
+                // ApprovalService API 호출 (연결 시)
+                if (_apiClient != null && await _apiClient.CheckConnectionAsync())
+                {
+                    var apiRequest = new CreateApprovalRequest
+                    {
+                        Title = Title,
+                        Description = $"{TableType} - {GenType ?? ""} {InjType ?? ""}".Trim(),
+                        RequesterId = _currentUser?.AdAccount ?? _currentUser?.UserId ?? "Unknown",
+                        RequesterName = WriterName,
+                        ApproverIds = new List<string> { SelectedApprover.AdAccount ?? SelectedApprover.UserId },
+                        SourceApp = "FlowMaster",
+                        SourceId = DocId.ToString()
+                    };
+
+                    var apiResponse = await _apiClient.CreateApprovalAsync(apiRequest);
+                    _approvalId = apiResponse.Id;
+
+                    // ApprovalId를 내부 DB에 저장
+                    doc.DocId = DocId;
+                    doc.ApprovalId = _approvalId;
+                    await _internalDb.UpdateDocumentAsync(doc);
+                }
+
+                _isNewDocument = false;
+                StatusText = "승인대기";
+                StatusColor = "#ff9800";
+                OnPropertyChanged(nameof(CanSubmit));
+                OnPropertyChanged(nameof(CanApprove));
+
+                var apiMsg = _approvalId != null ? $" (API ID: {_approvalId})" : " (로컬 전용)";
+                MessageBox.Show($"결재가 상신되었습니다.{apiMsg}", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"결재 상신 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private async Task ApproveAsync()
         {
-            StatusText = "승인완료";
-            StatusColor = "#4CAF50";
-            await SaveAsync();
-            MessageBox.Show("승인되었습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
+            try
+            {
+                // ApprovalService API 호출 (연결 시)
+                if (_apiClient != null && !string.IsNullOrEmpty(_approvalId) && await _apiClient.CheckConnectionAsync())
+                {
+                    var approverId = _currentUser?.AdAccount ?? _currentUser?.UserId ?? "Unknown";
+                    await _apiClient.MakeDecisionAsync(_approvalId, "approve", approverId, ApproverComment);
+                }
+
+                // 내부 DB 업데이트
+                var doc = new ApprovalDocument
+                {
+                    DocId = DocId,
+                    Title = Title,
+                    TableType = TableType,
+                    GenType = GenType,
+                    InjType = InjType,
+                    WriterName = WriterName,
+                    WriterId = _currentUser?.UserId ?? "Unknown",
+                    Description = Description,
+                    ApproverComment = ApproverComment,
+                    CurrentApproverId = SelectedApprover?.UserId,
+                    ApprovalId = _approvalId,
+                    CreateDate = DateTime.Now,
+                    UpdateDate = DateTime.Now,
+                    Status = ApprovalStatus.Approved
+                };
+
+                await _internalDb.UpdateDocumentAsync(doc);
+                await _internalDb.SaveChecklistItemsAsync(DocId, ChecklistItems.ToList());
+
+                StatusText = "승인완료";
+                StatusColor = "#4CAF50";
+                OnPropertyChanged(nameof(CanSubmit));
+                OnPropertyChanged(nameof(CanApprove));
+                OnPropertyChanged(nameof(IsReadOnly));
+                OnPropertyChanged(nameof(CanEdit));
+                OnPropertyChanged(nameof(CanSave));
+
+                MessageBox.Show("승인되었습니다.", "성공", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"승인 처리 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
 
         private async Task RejectAsync()
         {
-            StatusText = "반려";
-            StatusColor = "#f44336";
-            await SaveAsync();
-            MessageBox.Show("반려되었습니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+            try
+            {
+                // ApprovalService API 호출 (연결 시)
+                if (_apiClient != null && !string.IsNullOrEmpty(_approvalId) && await _apiClient.CheckConnectionAsync())
+                {
+                    var approverId = _currentUser?.AdAccount ?? _currentUser?.UserId ?? "Unknown";
+                    await _apiClient.MakeDecisionAsync(_approvalId, "reject", approverId, ApproverComment);
+                }
+
+                // 내부 DB 업데이트
+                var doc = new ApprovalDocument
+                {
+                    DocId = DocId,
+                    Title = Title,
+                    TableType = TableType,
+                    GenType = GenType,
+                    InjType = InjType,
+                    WriterName = WriterName,
+                    WriterId = _currentUser?.UserId ?? "Unknown",
+                    Description = Description,
+                    ApproverComment = ApproverComment,
+                    CurrentApproverId = SelectedApprover?.UserId,
+                    ApprovalId = _approvalId,
+                    CreateDate = DateTime.Now,
+                    UpdateDate = DateTime.Now,
+                    Status = ApprovalStatus.Rejected
+                };
+
+                await _internalDb.UpdateDocumentAsync(doc);
+                await _internalDb.SaveChecklistItemsAsync(DocId, ChecklistItems.ToList());
+
+                StatusText = "반려";
+                StatusColor = "#f44336";
+                OnPropertyChanged(nameof(CanSubmit));
+                OnPropertyChanged(nameof(CanApprove));
+                OnPropertyChanged(nameof(IsReadOnly));
+                OnPropertyChanged(nameof(CanEdit));
+                OnPropertyChanged(nameof(CanSave));
+
+                MessageBox.Show("반려되었습니다.", "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"반려 처리 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
     }
 }

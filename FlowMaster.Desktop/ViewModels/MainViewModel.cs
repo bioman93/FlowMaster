@@ -9,9 +9,11 @@ using FlowMaster.Core.Services;
 using FlowMaster.Domain.Interfaces;
 using FlowMaster.Domain.Models;
 using FlowMaster.Infrastructure.Repositories;
+using FlowMaster.Infrastructure.Services;
 using FlowMaster.Infrastructure.Utilities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Win32;
+#pragma warning disable CS4014 // 비동기 호출 결과 미대기 (async void 의도적 사용)
 
 namespace FlowMaster.Desktop.ViewModels
 {
@@ -19,7 +21,11 @@ namespace FlowMaster.Desktop.ViewModels
     {
         private readonly IServiceProvider _serviceProvider;
         private readonly IUserRepository _userRepo;
+        private readonly IAuthService _authService;
         private readonly ExternalDbRepository _externalDb;
+
+        // 현재 대시보드 VM 참조 (폴링 제어용)
+        private DashboardViewModel _currentDashboardVm;
 
         // Current User State
         private User _currentUser;
@@ -64,10 +70,12 @@ namespace FlowMaster.Desktop.ViewModels
         public ICommand SwitchUserCommand { get; }
         public ICommand ExtractSchemaCommand { get; }
 
-        public MainViewModel(IServiceProvider serviceProvider, IUserRepository userRepo, ExternalDbRepository externalDb)
+        public MainViewModel(IServiceProvider serviceProvider, IUserRepository userRepo,
+            IAuthService authService, ExternalDbRepository externalDb)
         {
             _serviceProvider = serviceProvider;
             _userRepo = userRepo;
+            _authService = authService;
             _externalDb = externalDb;
 
             // Load Test Users
@@ -83,35 +91,63 @@ namespace FlowMaster.Desktop.ViewModels
             NavigateToDashboard();
         }
 
-        private void LoadUsers()
+        private async void LoadUsers()
         {
-            // Assuming MockUserRepository has the helper method we added
-            if (_userRepo is FlowMaster.Infrastructure.Services.MockUserRepository mockRepo)
-            {
-                AvailableUsers = mockRepo.GetAllTestUsers();
-                CurrentUser = AvailableUsers.FirstOrDefault(); // Default to first user
-            }
+            // Emulator 실행 시 AD 사용자 목록 로드, 미실행 시 Mock 4명 폴백
+            AvailableUsers = await _userRepo.GetAllUsersAsync();
+
+            // Emulator Current Context 사용자를 초기 선택 (대시보드 선택과 동기화)
+            // Emulator 미실행이면 null 반환 → FirstOrDefault 폴백
+            var contextUser = await _authService.GetCurrentContextUserAsync();
+            if (contextUser != null)
+                CurrentUser = AvailableUsers.FirstOrDefault(u => u.AdAccount == contextUser.AdAccount)
+                              ?? AvailableUsers.FirstOrDefault();
+            else
+                CurrentUser = AvailableUsers.FirstOrDefault();
         }
 
         private async void NavigateToDashboard()
         {
+            // 이전 대시보드 VM의 폴링 중지 후 폐기
+            _currentDashboardVm?.StopPolling();
+            _currentDashboardVm?.Dispose();
+
             Title = "FlowMaster - Dashboard";
             var vm = _serviceProvider.GetRequiredService<DashboardViewModel>();
-            vm.OnOpenDetailRequest = NavigateToDetail; // Subscribe
-            await vm.LoadDataAsync(CurrentUser);
-            CurrentView = vm; 
+            vm.OnOpenDetailRequest = NavigateToDetail;
+            _currentDashboardVm = vm;
+
+            await vm.LoadDataAsync(CurrentUser); // 데이터 로드 + 폴링 시작
+            CurrentView = vm;
         }
 
-        private void NavigateToDetail(ApprovalDocument doc)
+        private async void NavigateToDetail(ApprovalDocument doc)
         {
-            Title = $"FlowMaster - {doc.Title}";
-            var vm = _serviceProvider.GetRequiredService<DetailViewModel>();
-            vm.Initialize(doc, CurrentUser, NavigateToDashboard); // Pass callback to go back
-            CurrentView = vm;
+            _currentDashboardVm?.StopPolling(); // 상세 화면 이동 시 폴링 중지
+
+            // BA1/BA2 문서는 TestInputView로 이동
+            if (doc.TableType == "BA1" || doc.TableType == "BA2")
+            {
+                Title = $"FlowMaster - {doc.TableType} 테스트 입력";
+                var internalDb = _serviceProvider.GetRequiredService<SqliteApprovalRepository>();
+                var apiClient = _serviceProvider.GetRequiredService<ApprovalApiClient>();
+                var vm = new TestInputViewModel(_externalDb, internalDb, apiClient, NavigateToDashboard);
+                await vm.InitializeExistingDocumentAsync(doc.DocId, CurrentUser, AvailableUsers);
+                CurrentView = vm;
+            }
+            else
+            {
+                // 일반 결재 문서는 DetailView로 이동
+                Title = $"FlowMaster - {doc.Title}";
+                var vm = _serviceProvider.GetRequiredService<DetailViewModel>();
+                vm.Initialize(doc, CurrentUser, NavigateToDashboard);
+                CurrentView = vm;
+            }
         }
 
         private void NavigateToWrite()
         {
+            _currentDashboardVm?.StopPolling(); // 대시보드 이탈 시 폴링 중지
             Title = "FlowMaster - 결재 작성";
             var vm = _serviceProvider.GetRequiredService<WriteViewModel>();
             vm.SetWriter(CurrentUser);
@@ -120,6 +156,7 @@ namespace FlowMaster.Desktop.ViewModels
 
         private void NavigateToTestInput()
         {
+            _currentDashboardVm?.StopPolling(); // 대시보드 이탈 시 폴링 중지
             Title = "FlowMaster - 테스트 결과 입력";
             var vm = new TypeSelectionViewModel(
                 _externalDb,
@@ -132,19 +169,27 @@ namespace FlowMaster.Desktop.ViewModels
         private async void OnTypeSelected(string tableType, ApprovalDocument cloneSource)
         {
             Title = $"FlowMaster - {tableType} 테스트 입력";
-            var vm = new TestInputViewModel(_externalDb, NavigateToDashboard);
+            var internalDb = _serviceProvider.GetRequiredService<SqliteApprovalRepository>();
+            var apiClient = _serviceProvider.GetRequiredService<ApprovalApiClient>();
+            var vm = new TestInputViewModel(_externalDb, internalDb, apiClient, NavigateToDashboard);
             await vm.InitializeNewDocumentAsync(tableType, cloneSource, CurrentUser, AvailableUsers);
             CurrentView = vm;
         }
 
-        private void OnUserSwitched(User newUser)
+        private async void OnUserSwitched(User newUser)
         {
-            if (newUser != null)
-            {
-                CurrentUser = newUser;
-                // Reload current view to reflect permissions if needed
-                NavigateToDashboard(); 
-            }
+            if (newUser == null) return;
+
+            // Emulator 실행 중이면 JWT 발급 후 ApprovalApiClient에 전달
+            // 미실행이면 null 반환 → 무인증 모드로 계속 동작
+            var token = await _authService.LoginAsync(newUser.AdAccount);
+            var apiClient = _serviceProvider.GetRequiredService<ApprovalApiClient>();
+            apiClient.SetAuthToken(token);
+
+            // async 이후 WPF 바인딩이 CurrentUser.Role 재평가를 놓칠 수 있으므로 명시적 알림
+            OnPropertyChanged(nameof(CurrentUser));
+
+            NavigateToDashboard();
         }
 
         private void ExtractDbSchema()

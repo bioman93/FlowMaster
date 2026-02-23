@@ -21,6 +21,11 @@ namespace FlowMaster.Infrastructure.Services
             };
         }
 
+        public Task<List<User>> GetAllUsersAsync()
+        {
+            return Task.FromResult(_users);
+        }
+
         public Task<User> GetUserByAdAccountAsync(string adAccount)
         {
             var user = _users.FirstOrDefault(u => u.AdAccount.Equals(adAccount, System.StringComparison.OrdinalIgnoreCase));

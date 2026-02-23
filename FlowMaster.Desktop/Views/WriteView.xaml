@@ -34,7 +34,7 @@
         <!-- 2. Form Inputs -->
         <StackPanel Grid.Row="1">
             <TextBlock Text="문서 제목 (Title)"/>
-            <TextBox Text="{Binding Title}" />
+            <TextBox Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             
             <TextBlock Text="작성자 (Writer)"/>
             <TextBlock Text="{Binding Writer.Name}" Margin="0,0,0,15" Foreground="Gray"/>

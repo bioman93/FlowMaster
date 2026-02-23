@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Configuration;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using FlowMaster.Core.Interfaces;
@@ -29,17 +30,46 @@ namespace FlowMaster.Desktop
         {
             var services = new ServiceCollection();
 
+            // App.config 설정값 로드
+            var approvalApiBaseUrl = ConfigurationManager.AppSettings["ApprovalApi:BaseUrl"]
+                ?? "http://localhost:5002/api";
+            var emulatorBaseUrl = ConfigurationManager.AppSettings["Emulator:BaseUrl"]
+                ?? "http://localhost:3900";
+            // 공유 DB 경로. 비어있으면 로컬 파일 사용
+            var dbPath = ConfigurationManager.AppSettings["FlowMaster:DbPath"];
+            if (string.IsNullOrWhiteSpace(dbPath))
+                dbPath = "flowmaster_test.db";
+
             // Services
-            services.AddSingleton<IUserRepository, MockUserRepository>();
-            services.AddSingleton<IApprovalRepository, SqliteApprovalRepository>();
-            services.AddSingleton<INotificationService, MockNotificationService>(); 
+            var approvalRepo = new SqliteApprovalRepository(dbPath);
+            services.AddSingleton(approvalRepo);                                          // 구체 타입
+            services.AddSingleton<IApprovalRepository>(approvalRepo);                    // 인터페이스
+            services.AddSingleton<INotificationService, MockNotificationService>();
             services.AddSingleton<IApprovalService, ApprovalService>();
             services.AddSingleton<ExternalDbRepository>(); // 외부 DB 연동
 
+            // 인증 서비스: Emulator 연동, 미실행 시 Mock 폴백
+            var authService = new EmulatorAuthService(emulatorBaseUrl);
+            services.AddSingleton<IAuthService>(authService);
+
+            // 사용자 저장소: EmulatorAuthService 위임 (GetUsersAsync → Emulator)
+            services.AddSingleton<IUserRepository>(
+                new EmulatorUserRepository(authService));
+
+            // ApprovalSystem API 클라이언트 (5002 포트)
+            services.AddSingleton(new ApprovalApiClient(approvalApiBaseUrl));
+
             // ViewModels
             services.AddTransient<MainViewModel>();
-            services.AddTransient<DashboardViewModel>();
-            services.AddTransient<WriteViewModel>();
+            services.AddTransient<DashboardViewModel>(sp => new DashboardViewModel(
+                sp.GetRequiredService<IApprovalRepository>(),
+                sp.GetRequiredService<IUserRepository>(),
+                sp.GetRequiredService<ApprovalApiClient>()));
+            services.AddTransient<WriteViewModel>(sp => new WriteViewModel(
+                sp.GetRequiredService<IApprovalService>(),
+                sp.GetRequiredService<IApprovalRepository>(),
+                sp.GetRequiredService<IUserRepository>(),
+                sp.GetRequiredService<ApprovalApiClient>()));
             services.AddTransient<DetailViewModel>();
 
             // View

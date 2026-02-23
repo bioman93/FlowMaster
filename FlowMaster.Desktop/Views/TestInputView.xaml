@@ -48,10 +48,11 @@
                     </Grid.ColumnDefinitions>
                     
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="📋" FontSize="20"/>
-                        <TextBox Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}" 
+                        <TextBlock Text="📋" FontSize="20" Foreground="White"/>
+                        <TextBox Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" 
                                  FontSize="18" FontWeight="Bold" Foreground="White"
                                  Background="Transparent" BorderThickness="0"
+                                 CaretBrush="White"
                                  Margin="0,5,0,0"/>
                     </StackPanel>
                     
@@ -92,7 +93,8 @@
                             <ComboBox Grid.Row="1" Grid.Column="1" 
                                       ItemsSource="{Binding AvailableApprovers}"
                                       SelectedItem="{Binding SelectedApprover}"
-                                      DisplayMemberPath="Name"/>
+                                      DisplayMemberPath="Name"
+                                      IsEnabled="{Binding CanEdit}"/>
                             
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="결재일:" Style="{StaticResource FieldLabel}"/>
                             <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding ApprovalDate}" VerticalAlignment="Center"/>
@@ -148,7 +150,8 @@
                     <DataGrid Grid.Row="1" ItemsSource="{Binding ChecklistItems}"
                               AutoGenerateColumns="False" CanUserAddRows="False"
                               HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                              BorderThickness="0" MinHeight="200" MaxHeight="400">
+                              BorderThickness="0" MinHeight="200" MaxHeight="400"
+                              IsReadOnly="{Binding IsReadOnly}">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="No." Binding="{Binding RowNo}" Width="60" IsReadOnly="True"/>
                             <DataGridTextColumn Header="확인항목" Binding="{Binding CheckItem}" Width="*" IsReadOnly="True"/>
@@ -182,7 +185,8 @@
                     <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
                              AcceptsReturn="True" TextWrapping="Wrap"
                              MinHeight="100" MaxHeight="200"
-                             VerticalScrollBarVisibility="Auto"/>
+                             VerticalScrollBarVisibility="Auto"
+                             IsEnabled="{Binding CanEdit}"/>
                 </StackPanel>
             </Border>
             
@@ -203,7 +207,8 @@
                     <Button Content="목록으로" Command="{Binding GoBackCommand}" 
                             Style="{StaticResource ActionButton}" Background="#e4dcd3"/>
                     <Button Content="저장" Command="{Binding SaveCommand}" 
-                            Style="{StaticResource ActionButton}" Background="#4CAF50" Foreground="White"/>
+                            Style="{StaticResource ActionButton}" Background="#4CAF50" Foreground="White"
+                            Visibility="{Binding CanSave}"/>
                     <Button Content="결재 상신" Command="{Binding SubmitCommand}" 
                             Style="{StaticResource ActionButton}" Background="#002c5f" Foreground="White"
                             Visibility="{Binding CanSubmit}"/>

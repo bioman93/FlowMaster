@@ -22,6 +22,7 @@ namespace FlowMaster.Domain.Models
         public DateTime? UpdateDate { get; set; }
         public ApprovalStatus Status { get; set; }
         public string CurrentApproverId { get; set; } // 현재 결재 순서인 사람
+        public string ApprovalId { get; set; }        // ApprovalService API의 결재 ID (APV-xxx)
 
         // 외부 DB 연동 필드
         public string IssueKey { get; set; }        // Jira 이슈 키

@@ -58,7 +58,7 @@ namespace FlowMaster.Desktop.ViewModels
             CancelCommand = new RelayCommand(() => _onCancel?.Invoke());
 
             // 이미 연결된 경우 문서 목록 로드
-            if (_externalDb.IsConnected)
+            if (_externalDb != null && _externalDb.IsConnected)
             {
                 IsDbConnected = true;
                 DbConnectionStatus = $"연결됨: {System.IO.Path.GetFileName(_externalDb.CurrentDbPath)}";

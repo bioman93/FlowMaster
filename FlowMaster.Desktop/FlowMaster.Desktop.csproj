@@ -12,6 +12,11 @@
     <PackageReference Include="SQLitePCLRaw.bundle_green" Version="2.1.11" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- App.config 읽기 (ApprovalApi URL 등 설정값) -->
+    <Reference Include="System.Configuration" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net472</TargetFramework>
