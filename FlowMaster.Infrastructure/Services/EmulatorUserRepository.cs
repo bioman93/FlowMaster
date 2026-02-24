@@ -8,33 +8,53 @@ using FlowMaster.Domain.Models;
 namespace FlowMaster.Infrastructure.Services
 {
     /// <summary>
-    /// IUserRepository 구현체: Emulator에서 사용자 목록을 로드합니다.
-    /// Emulator 미실행 시 EmulatorAuthService의 Mock 폴백을 그대로 사용합니다.
-    /// 최초 로드 후 메모리에 캐싱하여 반복 API 호출을 방지합니다.
+    /// IUserRepository 구현체.
+    /// Emulator 실행 중: Emulator API에서 사용자 목록 로드.
+    /// Emulator 미실행 : localFallback(SqliteAppUserRepository)에서 앱 등록 사용자 로드.
+    /// 최초 로드 후 메모리 캐싱하여 반복 API 호출 방지.
     /// </summary>
     public class EmulatorUserRepository : IUserRepository
     {
         private readonly IAuthService _authService;
+        private readonly IUserRepository _localFallback;
         private List<User> _cachedUsers;
 
-        public EmulatorUserRepository(IAuthService authService)
+        public EmulatorUserRepository(IAuthService authService, IUserRepository localFallback = null)
         {
-            _authService = authService;
+            _authService   = authService;
+            _localFallback = localFallback;
         }
 
-        /// <summary>
-        /// 전체 사용자 목록을 반환합니다.
-        /// 캐시 없으면 Emulator(또는 Mock)에서 로드합니다.
-        /// </summary>
         public async Task<List<User>> GetAllUsersAsync()
         {
-            if (_cachedUsers == null)
-                _cachedUsers = await _authService.GetUsersAsync();
+            if (_cachedUsers != null) return _cachedUsers;
+
+            // Emulator 연결 시도 (IsEmulatorAvailable은 GetUsersAsync 호출 후 설정됨)
+            var emulatorUsers = await _authService.GetUsersAsync();
+
+            if (_authService.IsEmulatorAvailable)
+            {
+                // Emulator 정상 응답 → Emulator 사용자 목록 사용
+                _cachedUsers = emulatorUsers;
+            }
+            else if (_localFallback != null)
+            {
+                // Emulator 미실행 → 앱 등록 사용자(SQLite) 사용
+                _cachedUsers = await _localFallback.GetAllUsersAsync();
+            }
+            else
+            {
+                _cachedUsers = emulatorUsers; // 폴백 없으면 빈 목록
+            }
+
             return _cachedUsers;
         }
 
         public async Task<User> GetUserByAdAccountAsync(string adAccount)
         {
+            if (_localFallback != null && !_authService.IsEmulatorAvailable)
+                return await _localFallback.GetUserByAdAccountAsync(adAccount);
+
             var users = await GetAllUsersAsync();
             return users.FirstOrDefault(u =>
                 u.AdAccount.Equals(adAccount, StringComparison.OrdinalIgnoreCase));
@@ -42,14 +62,32 @@ namespace FlowMaster.Infrastructure.Services
 
         public async Task<List<User>> GetUsersByRoleAsync(UserRole role)
         {
+            if (_localFallback != null && !_authService.IsEmulatorAvailable)
+                return await _localFallback.GetUsersByRoleAsync(role);
+
             var users = await GetAllUsersAsync();
             return users.Where(u => u.Role == role).ToList();
         }
 
-        public Task AddUserAsync(User user)
+        public async Task AddUserAsync(User user)
         {
-            // Emulator 환경에서는 JSON 파일 직접 수정이므로 앱에서 추가 불필요
-            return Task.CompletedTask;
+            _cachedUsers = null; // 캐시 무효화
+            if (_localFallback != null)
+                await _localFallback.AddUserAsync(user);
+        }
+
+        public async Task UpdateUserAsync(User user)
+        {
+            _cachedUsers = null;
+            if (_localFallback != null)
+                await _localFallback.UpdateUserAsync(user);
+        }
+
+        public async Task DeleteUserAsync(string userId)
+        {
+            _cachedUsers = null;
+            if (_localFallback != null)
+                await _localFallback.DeleteUserAsync(userId);
         }
     }
 }

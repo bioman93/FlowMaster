@@ -44,6 +44,19 @@ namespace FlowMaster.Infrastructure.Services
             return Task.CompletedTask;
         }
 
+        public Task UpdateUserAsync(User user)
+        {
+            var idx = _users.FindIndex(u => u.AdAccount == user.AdAccount);
+            if (idx >= 0) _users[idx] = user;
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteUserAsync(string userId)
+        {
+            _users.RemoveAll(u => u.AdAccount == userId || u.UserId == userId);
+            return Task.CompletedTask;
+        }
+
         // Test Helper: Get all test users
         public List<User> GetAllTestUsers()
         {

@@ -25,7 +25,12 @@
         <DataTemplate DataType="{x:Type vm:TestInputViewModel}">
             <views:TestInputView />
         </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:AdminViewModel}">
+            <views:AdminView />
+        </DataTemplate>
         
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
         <!-- Styles -->
         <Style x:Key="MenuButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
@@ -91,6 +96,17 @@
                         </StackPanel>
                     </Button>
                     
+                    <!-- Admin Section: Admin 역할이거나 Admin이 없을 때(최초 실행) 표시 -->
+                    <StackPanel Visibility="{Binding IsAdminMenuVisible, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="관리" FontSize="12" Foreground="#888" Margin="15,20,0,5"/>
+                        <Button Command="{Binding NavigateAdminCommand}" Style="{StaticResource MenuButton}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⚙️" Margin="0,0,10,0"/>
+                                <TextBlock Text="시스템 관리" FontSize="16"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
                     <!-- Tools Section -->
                     <TextBlock Text="도구" FontSize="12" Foreground="#888" Margin="15,20,0,5"/>
                     <Button Command="{Binding ExtractSchemaCommand}" Style="{StaticResource MenuButton}">

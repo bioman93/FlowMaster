@@ -46,6 +46,21 @@ namespace FlowMaster.Tests
             public Task UpdateApprovalLineStatusAsync(int lineId, ApprovalStepStatus status, string comment) => Task.CompletedTask;
             public Task AddTestResultAsync(TestResult result) => Task.CompletedTask;
             public Task<List<TestResult>> GetTestResultsAsync(int docId) => Task.FromResult(new List<TestResult>());
+            public Task UpdateApprovalIdAsync(int docId, string approvalId) => Task.CompletedTask;
+            public Task<ApprovalDocument> GetDocumentByApprovalIdAsync(string approvalId) => Task.FromResult<ApprovalDocument>(null);
+            public Task<List<ApprovalDocument>> GetUnsyncedDocumentsAsync() => Task.FromResult(new List<ApprovalDocument>());
+            public Task UpdateSyncStatusAsync(int docId, SyncStatus status, int retryCount, string error) => Task.CompletedTask;
+
+            // 新규 추가된 인터페이스 멤버 (no-op 구현)
+            public Task<List<ApprovalDocument>> GetAllDocumentsAsync() => Task.FromResult(new List<ApprovalDocument>());
+            public Task DeleteDocumentAsync(int docId) => Task.CompletedTask;
+            public Task<List<User>> GetDocumentParticipantsAsync(int docId) => Task.FromResult(new List<User>());
+            public Task SaveDocumentParticipantsAsync(int docId, List<User> participants) => Task.CompletedTask;
+            public Task AddDocumentParticipantAsync(int docId, User user) => Task.CompletedTask;
+            public Task RemoveDocumentParticipantAsync(int docId, string userId) => Task.CompletedTask;
+            public Task<List<User>> GetParticipantGroupAsync(string groupName) => Task.FromResult(new List<User>());
+            public Task AddParticipantGroupMemberAsync(string groupName, User user) => Task.CompletedTask;
+            public Task RemoveParticipantGroupMemberAsync(string groupName, string userId) => Task.CompletedTask;
         }
 
         // ─── Fake IUserRepository ──────────────────────────────────────────────
@@ -55,6 +70,8 @@ namespace FlowMaster.Tests
             public Task<User> GetUserByAdAccountAsync(string adAccount) => Task.FromResult<User>(null);
             public Task<List<User>> GetUsersByRoleAsync(UserRole role) => Task.FromResult(new List<User>());
             public Task AddUserAsync(User user) => Task.CompletedTask;
+            public Task UpdateUserAsync(User user) => Task.CompletedTask;
+            public Task DeleteUserAsync(string userId) => Task.CompletedTask;
         }
 
         private static User MakeUser() =>
@@ -207,7 +224,8 @@ namespace FlowMaster.Tests
         {
             return new FlowMaster.Desktop.ViewModels.DashboardViewModel(
                 repo ?? new FakeApprovalRepository(),
-                new FakeUserRepository());
+                new FakeUserRepository(),
+                approvalApiClient: null); // 테스트 환경: API 호출 없음 (try-catch로 보호됨)
         }
     }
 }

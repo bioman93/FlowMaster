@@ -7,49 +7,82 @@
              d:DataContext="{d:DesignInstance Type=vm:DashboardViewModel}"
              mc:Ignorable="d" 
              d:DesignHeight="600" d:DesignWidth="800">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </UserControl.Resources>
     <Grid Margin="20">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" /> <!-- Pending Header -->
-            <RowDefinition Height="*" />    <!-- Pending Grid -->
-            <RowDefinition Height="Auto" /> <!-- My Docs Header -->
+            <RowDefinition Height="Auto" /> <!-- Pending Header + Grid (결재자만 표시) -->
+            <RowDefinition Height="Auto" /> <!-- My Docs Header + 선택삭제 버튼 -->
             <RowDefinition Height="*" />    <!-- My Docs Grid -->
         </Grid.RowDefinitions>
 
-        <!-- 1. Pending Approvals -->
-        <TextBlock Grid.Row="0" Text="결재 대기 문서 (Pending Approvals)" 
-                   FontSize="18" FontWeight="Bold" Foreground="#002c5f" Margin="0,0,0,10"/>
-        
-        <DataGrid Grid.Row="1" ItemsSource="{Binding PendingApprovals}" AutoGenerateColumns="False" IsReadOnly="True"
-                  BorderBrush="#e4dcd3" BorderThickness="1" Background="White" Margin="0,0,0,20">
-            <DataGrid.InputBindings>
-                <MouseBinding MouseAction="LeftDoubleClick" 
-                              Command="{Binding OpenDetailCommand}" 
-                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=DataGrid}, Path=SelectedItem}"/>
-            </DataGrid.InputBindings>
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="DocId" Binding="{Binding DocId}" Width="60"/>
-                <DataGridTextColumn Header="제목" Binding="{Binding Title}" Width="*"/>
-                <DataGridTextColumn Header="작성자" Binding="{Binding WriterName}" Width="120"/>
-                <DataGridTextColumn Header="작성일" Binding="{Binding CreateDate, StringFormat=yyyy-MM-dd}" Width="120"/>
-            </DataGrid.Columns>
-        </DataGrid>
+        <!-- 1. Pending Approvals (결재 권한 사용자만 표시) -->
+        <StackPanel Grid.Row="0" Visibility="{Binding IsApprover, Converter={StaticResource BoolToVis}}"
+                    Margin="0,0,0,20">
+            <TextBlock Text="결재 대기 문서 (Pending Approvals)" 
+                       FontSize="18" FontWeight="Bold" Foreground="#002c5f" Margin="0,0,0,10"/>
+            <DataGrid ItemsSource="{Binding PendingApprovals}" AutoGenerateColumns="False" IsReadOnly="True"
+                      BorderBrush="#e4dcd3" BorderThickness="1" Background="White"
+                      MaxHeight="250">
+                <DataGrid.InputBindings>
+                    <MouseBinding MouseAction="LeftDoubleClick" 
+                                  Command="{Binding OpenDetailCommand}" 
+                                  CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=DataGrid}, Path=SelectedItem}"/>
+                </DataGrid.InputBindings>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="DocId" Binding="{Binding DocId}" Width="60"/>
+                    <DataGridTextColumn Header="제목" Binding="{Binding Title}" Width="*"/>
+                    <DataGridTextColumn Header="작성자" Binding="{Binding WriterName}" Width="120"/>
+                    <DataGridTextColumn Header="작성일" Binding="{Binding CreateDate, StringFormat=yyyy-MM-dd}" Width="120"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </StackPanel>
 
         <!-- 2. My Documents -->
-        <TextBlock Grid.Row="2" Text="내가 올린 문서 (My Documents)" 
-                   FontSize="18" FontWeight="Bold" Foreground="#002c5f" Margin="0,0,0,10"/>
+        <Grid Grid.Row="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="내가 올린 문서 (My Documents)"
+                       FontSize="18" FontWeight="Bold" Foreground="#002c5f"/>
+            <Button Grid.Column="1" Content="선택 삭제"
+                    Command="{Binding DeleteSelectedCommand}"
+                    Padding="14,6" Background="#f44336" Foreground="White"
+                    FontWeight="SemiBold" BorderThickness="0"/>
+        </Grid>
 
-        <DataGrid Grid.Row="3" ItemsSource="{Binding MyDrafts}" AutoGenerateColumns="False" IsReadOnly="True"
-                  BorderBrush="#e4dcd3" BorderThickness="1" Background="White">
+        <DataGrid Grid.Row="2" x:Name="MyDraftsGrid"
+                  ItemsSource="{Binding MyDrafts}" AutoGenerateColumns="False"
+                  IsReadOnly="False" CanUserAddRows="False" CanUserDeleteRows="False"
+                  BorderBrush="#e4dcd3" BorderThickness="1" Background="White"
+                  SelectionMode="Single">
             <DataGrid.InputBindings>
-                <MouseBinding MouseAction="LeftDoubleClick" 
-                              Command="{Binding OpenDetailCommand}" 
+                <MouseBinding MouseAction="LeftDoubleClick"
+                              Command="{Binding OpenDetailCommand}"
                               CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=DataGrid}, Path=SelectedItem}"/>
             </DataGrid.InputBindings>
             <DataGrid.Columns>
-                <DataGridTextColumn Header="DocId" Binding="{Binding DocId}" Width="60"/>
-                <DataGridTextColumn Header="제목" Binding="{Binding Title}" Width="*"/>
-                <DataGridTextColumn Header="상태" Binding="{Binding Status}" Width="100"/>
-                <DataGridTextColumn Header="작성일" Binding="{Binding CreateDate, StringFormat=yyyy-MM-dd}" Width="120"/>
+                <!-- 체크박스: 승인완료 문서는 비활성 -->
+                <DataGridTemplateColumn Width="40" CanUserSort="False" CanUserResize="False">
+                    <DataGridTemplateColumn.HeaderTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="선택" HorizontalAlignment="Center" FontSize="11"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.HeaderTemplate>
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox IsChecked="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged, Mode=TwoWay}"
+                                      IsEnabled="{Binding CanSelect}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="DocId" Binding="{Binding DocId}" Width="60" IsReadOnly="True"/>
+                <DataGridTextColumn Header="제목" Binding="{Binding Title}" Width="*" IsReadOnly="True"/>
+                <DataGridTextColumn Header="상태" Binding="{Binding StatusDisplay}" Width="100" IsReadOnly="True"/>
+                <DataGridTextColumn Header="작성일" Binding="{Binding CreateDate, StringFormat=yyyy-MM-dd}" Width="120" IsReadOnly="True"/>
             </DataGrid.Columns>
         </DataGrid>
     </Grid>

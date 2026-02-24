@@ -3,10 +3,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:FlowMaster.Desktop"
              mc:Ignorable="d" 
              d:DesignHeight="500" d:DesignWidth="600">
     
     <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:NullToCollapsedConverter x:Key="NullToCollapsed"/>
         <Style x:Key="TypeCardButton" TargetType="Button">
             <Setter Property="Background" Value="White"/>
             <Setter Property="BorderBrush" Value="#ddd"/>
@@ -86,12 +89,81 @@
                 
                 <!-- Clone Section -->
                 <Border Background="#f8f8f8" CornerRadius="8" Margin="0,30,0,0" Padding="15">
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                        <TextBlock Text="🔄 기존 문서에서 복제:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <ComboBox ItemsSource="{Binding ExistingDocuments}" 
-                                  SelectedItem="{Binding SelectedCloneSource}"
-                                  DisplayMemberPath="Title" Width="300"
-                                  IsEnabled="{Binding IsDbConnected}"/>
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,8">
+                            <TextBlock Text="🔄 기존 문서에서 복제:" VerticalAlignment="Center" Margin="0,0,10,0"
+                                       FontWeight="SemiBold"/>
+                            <TextBlock Text="(제목, 작성자, DocId로 검색)" Foreground="#999" FontSize="11" 
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        
+                        <!-- 선택된 문서 표시 -->
+                        <Border Background="#e8f4fd" CornerRadius="4" Padding="8,4" Margin="0,0,0,6"
+                                Visibility="{Binding SelectedCloneSource, Converter={StaticResource NullToCollapsed}}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="📄" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock Text="{Binding SelectedCloneText}" FontWeight="SemiBold" 
+                                           Foreground="#002c5f" VerticalAlignment="Center"/>
+                                <Button Content="✕" Command="{Binding ClearCloneSelectionCommand}"
+                                        Margin="8,0,0,0" Padding="4,0" FontSize="10"
+                                        Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                        Foreground="#999" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- 검색 입력 -->
+                        <TextBox Text="{Binding CloneSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 Width="400" HorizontalAlignment="Center" Padding="8,6"
+                                 FontSize="13">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox">
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="">
+                                            <Setter Property="Background">
+                                                <Setter.Value>
+                                                    <VisualBrush Stretch="None" AlignmentX="Left">
+                                                        <VisualBrush.Visual>
+                                                            <TextBlock Text="  🔍 문서 제목 또는 작성자명으로 검색..." 
+                                                                       Foreground="#aaa" FontSize="13" Margin="6,0,0,0"/>
+                                                        </VisualBrush.Visual>
+                                                    </VisualBrush>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+                        
+                        <!-- 검색 결과 드롭다운 -->
+                        <Border Background="White" BorderBrush="#ddd" BorderThickness="1" CornerRadius="0,0,4,4"
+                                Width="400" HorizontalAlignment="Center" MaxHeight="200"
+                                Visibility="{Binding IsCloneSearchVisible, Converter={StaticResource BoolToVis}}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding CloneSearchResults}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Button Command="{Binding DataContext.SelectCloneDocumentCommand, 
+                                                    RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                    CommandParameter="{Binding}"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                    Padding="10,6">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="{Binding DocId, StringFormat='[{0}]'}" 
+                                                               Foreground="#999" Width="50" FontSize="12"/>
+                                                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" 
+                                                               Foreground="#333" TextTrimming="CharacterEllipsis"
+                                                               MaxWidth="240"/>
+                                                    <TextBlock Text="{Binding WriterName}" Foreground="#666" 
+                                                               Margin="10,0,0,0" FontSize="12"/>
+                                                </StackPanel>
+                                            </Button>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Border>
                     </StackPanel>
                 </Border>
                 

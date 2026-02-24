@@ -15,6 +15,9 @@
   <ItemGroup>
     <!-- App.config 읽기 (ApprovalApi URL 등 설정값) -->
     <Reference Include="System.Configuration" />
+    <!-- Windows AD 조회 (net472 내장 어셈블리) -->
+    <Reference Include="System.DirectoryServices" />
+    <Reference Include="System.DirectoryServices.AccountManagement" />
   </ItemGroup>
 
   <PropertyGroup>

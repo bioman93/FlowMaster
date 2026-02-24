@@ -1,11 +1,14 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Input;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FlowMaster.Domain.DTOs;
 using FlowMaster.Domain.Interfaces;
 using FlowMaster.Domain.Models;
 using FlowMaster.Infrastructure.Services;
@@ -31,8 +34,8 @@ namespace FlowMaster.Desktop.ViewModels
             set => SetProperty(ref _pendingApprovals, value);
         }
 
-        private ObservableCollection<ApprovalDocument> _myDrafts;
-        public ObservableCollection<ApprovalDocument> MyDrafts
+        private ObservableCollection<SelectableDocument> _myDrafts;
+        public ObservableCollection<SelectableDocument> MyDrafts
         {
             get => _myDrafts;
             set => SetProperty(ref _myDrafts, value);
@@ -64,9 +67,16 @@ namespace FlowMaster.Desktop.ViewModels
         /// </summary>
         public bool IsPollingActive => _pollingTimer.IsEnabled;
 
+        /// <summary>
+        /// 현재 사용자가 결재 권한(Approver/Admin)을 가지고 있는지 여부.
+        /// 결재 대기 목록 표시 여부를 제어합니다.
+        /// </summary>
+        public bool IsApprover => _currentUser?.Role == UserRole.Approver || _currentUser?.Role == UserRole.Admin;
+
         // ── 명령 ────────────────────────────────────────────────────────────────
         public ICommand OpenDetailCommand { get; }
         public ICommand RefreshCommand { get; }
+        public ICommand DeleteSelectedCommand { get; }
         public Action<ApprovalDocument> OnOpenDetailRequest;
 
         // ── 생성자 ──────────────────────────────────────────────────────────────
@@ -79,10 +89,11 @@ namespace FlowMaster.Desktop.ViewModels
             _userRepo = userRepo;
             _approvalApiClient = approvalApiClient;
             PendingApprovals = new ObservableCollection<ApprovalDocument>();
-            MyDrafts = new ObservableCollection<ApprovalDocument>();
+            MyDrafts = new ObservableCollection<SelectableDocument>();
 
-            OpenDetailCommand = new RelayCommand<ApprovalDocument>(OpenDetail);
+            OpenDetailCommand = new RelayCommand<SelectableDocument>(sd => OpenDetail(sd?.Document));
             RefreshCommand    = new AsyncRelayCommand(RefreshAsync);
+            DeleteSelectedCommand = new AsyncRelayCommand(DeleteSelectedAsync);
 
             // 30초 주기 폴링 타이머 (자동 시작하지 않음)
             _pollingTimer = new DispatcherTimer
@@ -100,6 +111,7 @@ namespace FlowMaster.Desktop.ViewModels
         {
             if (user == null) return;
             _currentUser = user;
+            OnPropertyChanged(nameof(IsApprover));
 
             await RefreshAsync();
             StartPolling();
@@ -118,11 +130,23 @@ namespace FlowMaster.Desktop.ViewModels
                 // ApprovalSystem 결재 상태 동기화 (연결 가능한 경우)
                 await SyncApprovalStatusAsync();
 
-                var pending = await _approvalRepo.GetPendingApprovalsAsync(_currentUser.UserId);
-                PendingApprovals = new ObservableCollection<ApprovalDocument>(pending);
+                // 미동기화 문서 재시도 (ApprovalSystem 복구 시 자동 재등록)
+                await SyncUnsyncedDocumentsAsync();
+
+                // 결재 권한이 있는 사용자만 결재 대기 목록 조회
+                if (IsApprover)
+                {
+                    var pending = await _approvalRepo.GetPendingApprovalsAsync(_currentUser.UserId);
+                    PendingApprovals = new ObservableCollection<ApprovalDocument>(pending);
+                }
+                else
+                {
+                    PendingApprovals = new ObservableCollection<ApprovalDocument>();
+                }
 
                 var drafts = await _approvalRepo.GetMyDraftsAsync(_currentUser.UserId);
-                MyDrafts = new ObservableCollection<ApprovalDocument>(drafts);
+                MyDrafts = new ObservableCollection<SelectableDocument>(
+                    drafts.Select(d => new SelectableDocument(d)));
 
                 _lastRefreshed = DateTime.Now;
                 OnPropertyChanged(nameof(LastRefreshedText));
@@ -174,6 +198,66 @@ namespace FlowMaster.Desktop.ViewModels
             }
         }
 
+        // ── 미동기화 문서 재등록 ────────────────────────────────────────────────
+        /// <summary>
+        /// ApprovalId 없는 미동기화 문서를 ApprovalSystem에 재등록합니다.
+        /// ApprovalSystem 복구 후 첫 폴링 tick에서 자동 실행됩니다.
+        /// 재시도 횟수가 3회 이상이면 건너뜁니다 (SyncStatus = Failed 유지).
+        /// </summary>
+        private async Task SyncUnsyncedDocumentsAsync()
+        {
+            try
+            {
+                var unsynced = await _approvalRepo.GetUnsyncedDocumentsAsync();
+                if (!unsynced.Any()) return;
+
+                foreach (var doc in unsynced)
+                {
+                    try
+                    {
+                        // 결재선 정보 포함한 전체 문서 로드 (ApproverIds 추출용)
+                        var fullDoc = await _approvalRepo.GetDocumentAsync(doc.DocId);
+                        var approverIds = fullDoc?.ApprovalLines
+                            ?.Select(l => l.ApproverId)
+                            .ToList() ?? new List<string>();
+
+                        // 결재선이 없으면 CurrentApproverId를 fallback으로 사용
+                        if (!approverIds.Any() && !string.IsNullOrEmpty(doc.CurrentApproverId))
+                            approverIds.Add(doc.CurrentApproverId);
+
+                        var apiRequest = new CreateApprovalRequest
+                        {
+                            Title = doc.Title,
+                            RequesterId = doc.WriterId,
+                            RequesterName = doc.WriterName,
+                            ApproverIds = approverIds,
+                            SourceApp = "FlowMaster",
+                            SourceId = doc.DocId.ToString(),
+                            Description = $"FlowMaster 테스트 결과 승인 요청 (문서 #{doc.DocId})"
+                        };
+
+                        var apiResponse = await _approvalApiClient.CreateApprovalAsync(apiRequest);
+                        if (!string.IsNullOrEmpty(apiResponse?.Id))
+                        {
+                            await _approvalRepo.UpdateApprovalIdAsync(doc.DocId, apiResponse.Id);
+                            await _approvalRepo.UpdateSyncStatusAsync(doc.DocId, SyncStatus.Synced, doc.SyncRetryCount, null);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // 개별 문서 재시도 실패 → 재시도 횟수 증가, 다음 polling 때 재시도
+                        await _approvalRepo.UpdateSyncStatusAsync(
+                            doc.DocId, SyncStatus.Failed,
+                            doc.SyncRetryCount + 1, ex.Message);
+                    }
+                }
+            }
+            catch
+            {
+                // ApprovalSystem 미실행 시 조용히 건너뜀
+            }
+        }
+
         // ── 폴링 제어 ───────────────────────────────────────────────────────────
         /// <summary>
         /// 30초 주기 자동 갱신을 시작합니다.
@@ -211,6 +295,36 @@ namespace FlowMaster.Desktop.ViewModels
                 OnOpenDetailRequest?.Invoke(doc);
         }
 
+        private async Task DeleteSelectedAsync()
+        {
+            var toDelete = MyDrafts.Where(d => d.IsSelected && d.CanSelect).ToList();
+            if (!toDelete.Any())
+            {
+                MessageBox.Show("삭제할 문서를 선택해주세요.\n(승인완료 문서는 삭제할 수 없습니다.)",
+                    "알림", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var result = MessageBox.Show(
+                $"선택한 {toDelete.Count}개 문서를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.",
+                "삭제 확인", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result != MessageBoxResult.Yes) return;
+
+            int deleted = 0;
+            foreach (var item in toDelete)
+            {
+                try
+                {
+                    await _approvalRepo.DeleteDocumentAsync(item.DocId);
+                    deleted++;
+                }
+                catch { }
+            }
+
+            await RefreshAsync();
+            MessageBox.Show($"{deleted}개 문서가 삭제되었습니다.", "완료", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
         // ── IDisposable ─────────────────────────────────────────────────────────
         public void Dispose()
         {
@@ -219,6 +333,45 @@ namespace FlowMaster.Desktop.ViewModels
                 StopPolling();
                 _pollingTimer.Tick -= OnPollingTick;
                 _disposed = true;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 내 문서 목록 다중 선택용 래퍼. 승인완료 문서는 체크박스 비활성.
+    /// </summary>
+    public class SelectableDocument : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
+    {
+        public ApprovalDocument Document { get; }
+
+        private bool _isSelected;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set => SetProperty(ref _isSelected, value);
+        }
+
+        /// <summary>승인완료 문서는 선택 불가</summary>
+        public bool CanSelect => Document.Status != ApprovalStatus.Approved;
+
+        // DataGrid 컬럼 바인딩 편의 프로퍼티
+        public int    DocId      => Document.DocId;
+        public string Title      => Document.Title;
+        public string StatusDisplay => GetStatusText(Document.Status);
+        public System.DateTime CreateDate => Document.CreateDate;
+
+        public SelectableDocument(ApprovalDocument doc) { Document = doc; }
+
+        private static string GetStatusText(ApprovalStatus status)
+        {
+            switch (status)
+            {
+                case ApprovalStatus.TempSaved: return "임시저장";
+                case ApprovalStatus.Pending:   return "승인대기";
+                case ApprovalStatus.Approved:  return "승인완료";
+                case ApprovalStatus.Rejected:  return "반려";
+                case ApprovalStatus.Canceled:  return "취소됨";
+                default: return "작성중";
             }
         }
     }

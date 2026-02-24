@@ -146,9 +146,11 @@ namespace FlowMaster.Desktop.ViewModels
                 }
                 catch (Exception apiEx)
                 {
-                    // ApprovalSystem 미실행 시 경고만 표시하고 계속 진행
+                    // SyncStatus = Pending으로 저장 → 연결 복구 시 DashboardViewModel 폴링에서 자동 재시도
+                    await _approvalRepo.UpdateSyncStatusAsync(docId, SyncStatus.Pending, 0, apiEx.Message);
+
                     MessageBox.Show(
-                        $"결재 문서가 저장되었지만 ApprovalSystem 연동에 실패했습니다.\n({apiEx.Message})\n\nFM 내부 결재로만 처리됩니다.",
+                        $"결재 문서가 저장되었지만 ApprovalSystem 연동에 실패했습니다.\n({apiEx.Message})\n\nApprovalSystem 복구 시 자동 동기화됩니다.",
                         "ApprovalSystem 연동 경고",
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);

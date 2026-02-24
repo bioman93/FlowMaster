@@ -10,6 +10,19 @@ namespace FlowMaster.Domain.Interfaces
         Task<User> GetUserByAdAccountAsync(string adAccount);
         Task<List<User>> GetUsersByRoleAsync(UserRole role);
         Task AddUserAsync(User user);
+        Task UpdateUserAsync(User user);
+        Task DeleteUserAsync(string userId);
+    }
+
+    public interface IAppGroupRepository
+    {
+        Task<List<AppGroup>> GetAllGroupsAsync();
+        Task<AppGroup> GetGroupWithMembersAsync(int groupId);
+        Task<int> AddGroupAsync(AppGroup group);
+        Task UpdateGroupAsync(AppGroup group);
+        Task DeleteGroupAsync(int groupId);
+        Task AddGroupMemberAsync(int groupId, string userId);
+        Task RemoveGroupMemberAsync(int groupId, string userId);
     }
 
     public interface IApprovalRepository
@@ -24,9 +37,20 @@ namespace FlowMaster.Domain.Interfaces
         /// ApprovalId로 FM 문서를 조회합니다. 상태 동기화에 사용합니다.
         /// </summary>
         Task<ApprovalDocument> GetDocumentByApprovalIdAsync(string approvalId);
+        /// <summary>
+        /// 미동기화 문서 목록 조회 (SyncStatus=Pending/Failed, SyncRetryCount &lt; 3).
+        /// 연결 복구 시 ApprovalSystem 재등록에 사용합니다.
+        /// </summary>
+        Task<List<ApprovalDocument>> GetUnsyncedDocumentsAsync();
+        /// <summary>
+        /// 동기화 상태를 업데이트합니다.
+        /// </summary>
+        Task UpdateSyncStatusAsync(int docId, SyncStatus status, int retryCount, string error);
         Task<ApprovalDocument> GetDocumentAsync(int docId);
+        Task<List<ApprovalDocument>> GetAllDocumentsAsync();
         Task<List<ApprovalDocument>> GetMyDraftsAsync(string userId);
         Task<List<ApprovalDocument>> GetPendingApprovalsAsync(string approverId);
+        Task DeleteDocumentAsync(int docId);
         
         // Approval Line logic
         Task AddApprovalLineAsync(ApprovalLine line);
@@ -35,5 +59,14 @@ namespace FlowMaster.Domain.Interfaces
         // Test Result logic
         Task AddTestResultAsync(TestResult result);
         Task<List<TestResult>> GetTestResultsAsync(int docId);
+
+        // Participant (Watcher) logic
+        Task<List<User>> GetDocumentParticipantsAsync(int docId);
+        Task SaveDocumentParticipantsAsync(int docId, List<User> participants);
+        Task AddDocumentParticipantAsync(int docId, User user);
+        Task RemoveDocumentParticipantAsync(int docId, string userId);
+        Task<List<User>> GetParticipantGroupAsync(string groupName);
+        Task AddParticipantGroupMemberAsync(string groupName, User user);
+        Task RemoveParticipantGroupMemberAsync(string groupName, string userId);
     }
 }

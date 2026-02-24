@@ -33,6 +33,7 @@ namespace FlowMaster.Tests
 
             public Task<List<User>> GetUsersAsync() => Task.FromResult(_users);
             public Task<string> LoginAsync(string adAccount) => Task.FromResult(CurrentToken);
+            public Task<User> GetCurrentContextUserAsync() => Task.FromResult<User>(null);
         }
 
         private static EmulatorUserRepository CreateRepo()

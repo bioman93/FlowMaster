@@ -47,8 +47,17 @@ namespace FlowMaster.Infrastructure.Repositories
                         InjType TEXT,
                         Description TEXT,
                         ApproverComment TEXT,
-                        ApprovalId TEXT
+                        ApprovalId TEXT,
+                        ApprovalTime TEXT,
+                        Version TEXT,
+                        OutputPath TEXT,
+                        SyncStatus INTEGER DEFAULT 0,
+                        SyncRetryCount INTEGER DEFAULT 0,
+                        SyncError TEXT
                     )");
+
+                // 기존 DB 마이그레이션: SyncStatus 관련 컬럼이 없으면 추가
+                MigrateAddSyncColumns(conn);
 
                 // FM_ApprovalLines: 결재선
                 conn.Execute(@"
@@ -90,7 +99,52 @@ namespace FlowMaster.Infrastructure.Repositories
                         Remarks TEXT,
                         DisplayOrder INTEGER
                     )");
+
+                // FM_DocumentParticipants: 문서별 참여자
+                conn.Execute(@"
+                    CREATE TABLE IF NOT EXISTS FM_DocumentParticipants (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        DocId INTEGER NOT NULL,
+                        UserId TEXT NOT NULL,
+                        UserName TEXT
+                    )");
+
+                // FM_ParticipantGroups: MPI/GDI 참여자 그룹
+                conn.Execute(@"
+                    CREATE TABLE IF NOT EXISTS FM_ParticipantGroups (
+                        Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        GroupName TEXT NOT NULL,
+                        UserId TEXT NOT NULL,
+                        UserName TEXT
+                    )");
             }
+        }
+
+        private void MigrateAddSyncColumns(IDbConnection conn)
+        {
+            // PRAGMA table_info으로 컬럼 존재 여부 확인 후 없으면 ALTER TABLE로 추가
+            var columns = new HashSet<string>(
+                conn.Query<PragmaTableInfo>("PRAGMA table_info(FM_ApprovalDocuments)")
+                    .Select(r => r.Name),
+                StringComparer.OrdinalIgnoreCase);
+
+            if (!columns.Contains("SyncStatus"))
+                conn.Execute("ALTER TABLE FM_ApprovalDocuments ADD COLUMN SyncStatus INTEGER DEFAULT 0");
+
+            if (!columns.Contains("SyncRetryCount"))
+                conn.Execute("ALTER TABLE FM_ApprovalDocuments ADD COLUMN SyncRetryCount INTEGER DEFAULT 0");
+
+            if (!columns.Contains("SyncError"))
+                conn.Execute("ALTER TABLE FM_ApprovalDocuments ADD COLUMN SyncError TEXT");
+
+            if (!columns.Contains("ApprovalTime"))
+                conn.Execute("ALTER TABLE FM_ApprovalDocuments ADD COLUMN ApprovalTime TEXT");
+
+            if (!columns.Contains("Version"))
+                conn.Execute("ALTER TABLE FM_ApprovalDocuments ADD COLUMN Version TEXT");
+
+            if (!columns.Contains("OutputPath"))
+                conn.Execute("ALTER TABLE FM_ApprovalDocuments ADD COLUMN OutputPath TEXT");
         }
 
         private IDbConnection GetConnection() => new SqliteConnection(_connectionString);
@@ -101,9 +155,9 @@ namespace FlowMaster.Infrastructure.Repositories
             {
                 var sql = @"
                     INSERT INTO FM_ApprovalDocuments
-                        (Title, WriterId, WriterName, CreateDate, Status, CurrentApproverId, ApprovalId, TableType, GenType, InjType, Description)
+                        (Title, WriterId, WriterName, CreateDate, Status, CurrentApproverId, ApprovalId, TableType, GenType, InjType, Description, Version, OutputPath)
                     VALUES
-                        (@Title, @WriterId, @WriterName, @CreateDate, @Status, @CurrentApproverId, @ApprovalId, @TableType, @GenType, @InjType, @Description);
+                        (@Title, @WriterId, @WriterName, @CreateDate, @Status, @CurrentApproverId, @ApprovalId, @TableType, @GenType, @InjType, @Description, @Version, @OutputPath);
                     SELECT last_insert_rowid();";
                 return await conn.ExecuteScalarAsync<int>(sql, doc);
             }
@@ -118,8 +172,21 @@ namespace FlowMaster.Infrastructure.Repositories
                     SET Title = @Title, UpdateDate = @UpdateDate, Status = @Status,
                         TableType = @TableType, GenType = @GenType, InjType = @InjType,
                         Description = @Description, ApproverComment = @ApproverComment,
-                        CurrentApproverId = @CurrentApproverId, ApprovalId = @ApprovalId
+                        CurrentApproverId = @CurrentApproverId, ApprovalId = @ApprovalId,
+                        ApprovalTime = @ApprovalTime,
+                        Version = @Version, OutputPath = @OutputPath
                     WHERE DocId = @DocId", doc);
+            }
+        }
+
+        public async Task DeleteDocumentAsync(int docId)
+        {
+            using (var conn = GetConnection())
+            {
+                await conn.ExecuteAsync("DELETE FROM FM_ChecklistItems WHERE DocId = @DocId", new { DocId = docId });
+                await conn.ExecuteAsync("DELETE FROM FM_ApprovalLines WHERE DocId = @DocId", new { DocId = docId });
+                await conn.ExecuteAsync("DELETE FROM FM_TestResults WHERE DocId = @DocId", new { DocId = docId });
+                await conn.ExecuteAsync("DELETE FROM FM_ApprovalDocuments WHERE DocId = @DocId", new { DocId = docId });
             }
         }
 
@@ -276,6 +343,127 @@ namespace FlowMaster.Infrastructure.Repositories
                 return (await conn.QueryAsync<ApprovalDocument>(
                     "SELECT * FROM FM_ApprovalDocuments ORDER BY CreateDate DESC")).ToList();
             }
+        }
+
+        public async Task<List<ApprovalDocument>> GetUnsyncedDocumentsAsync()
+        {
+            using (var conn = GetConnection())
+            {
+                // SyncStatus = Pending(1) 또는 Failed(2), 재시도 횟수가 3 미만인 문서
+                return (await conn.QueryAsync<ApprovalDocument>(@"
+                    SELECT * FROM FM_ApprovalDocuments
+                    WHERE SyncStatus IN (1, 2) AND SyncRetryCount < 3
+                    ORDER BY CreateDate ASC")).ToList();
+            }
+        }
+
+        public async Task UpdateSyncStatusAsync(int docId, SyncStatus status, int retryCount, string error)
+        {
+            using (var conn = GetConnection())
+            {
+                await conn.ExecuteAsync(@"
+                    UPDATE FM_ApprovalDocuments
+                    SET SyncStatus = @SyncStatus, SyncRetryCount = @SyncRetryCount,
+                        SyncError = @SyncError, UpdateDate = @UpdateDate
+                    WHERE DocId = @DocId",
+                    new { SyncStatus = status, SyncRetryCount = retryCount, SyncError = error,
+                          UpdateDate = DateTime.Now, DocId = docId });
+            }
+        }
+
+        #region Participant Methods
+
+        public async Task<List<User>> GetDocumentParticipantsAsync(int docId)
+        {
+            using (var conn = GetConnection())
+            {
+                return (await conn.QueryAsync<User>(
+                    "SELECT UserId, UserName as Name FROM FM_DocumentParticipants WHERE DocId = @DocId",
+                    new { DocId = docId })).ToList();
+            }
+        }
+
+        public async Task SaveDocumentParticipantsAsync(int docId, List<User> participants)
+        {
+            using (var conn = GetConnection())
+            {
+                conn.Open();
+                using (var tx = conn.BeginTransaction())
+                {
+                    await conn.ExecuteAsync(
+                        "DELETE FROM FM_DocumentParticipants WHERE DocId = @DocId", new { DocId = docId }, tx);
+                    foreach (var u in participants)
+                    {
+                        await conn.ExecuteAsync(
+                            "INSERT INTO FM_DocumentParticipants (DocId, UserId, UserName) VALUES (@DocId, @UserId, @Name)",
+                            new { DocId = docId, u.UserId, u.Name }, tx);
+                    }
+                    tx.Commit();
+                }
+            }
+        }
+
+        public async Task AddDocumentParticipantAsync(int docId, User user)
+        {
+            using (var conn = GetConnection())
+            {
+                await conn.ExecuteAsync(
+                    "INSERT OR IGNORE INTO FM_DocumentParticipants (DocId, UserId, UserName) VALUES (@DocId, @UserId, @Name)",
+                    new { DocId = docId, user.UserId, user.Name });
+            }
+        }
+
+        public async Task RemoveDocumentParticipantAsync(int docId, string userId)
+        {
+            using (var conn = GetConnection())
+            {
+                await conn.ExecuteAsync(
+                    "DELETE FROM FM_DocumentParticipants WHERE DocId = @DocId AND UserId = @UserId",
+                    new { DocId = docId, UserId = userId });
+            }
+        }
+
+        public async Task<List<User>> GetParticipantGroupAsync(string groupName)
+        {
+            using (var conn = GetConnection())
+            {
+                return (await conn.QueryAsync<User>(
+                    "SELECT UserId, UserName as Name FROM FM_ParticipantGroups WHERE GroupName = @GroupName",
+                    new { GroupName = groupName })).ToList();
+            }
+        }
+
+        public async Task AddParticipantGroupMemberAsync(string groupName, User user)
+        {
+            using (var conn = GetConnection())
+            {
+                await conn.ExecuteAsync(
+                    "INSERT OR IGNORE INTO FM_ParticipantGroups (GroupName, UserId, UserName) VALUES (@GroupName, @UserId, @Name)",
+                    new { GroupName = groupName, user.UserId, user.Name });
+            }
+        }
+
+        public async Task RemoveParticipantGroupMemberAsync(string groupName, string userId)
+        {
+            using (var conn = GetConnection())
+            {
+                await conn.ExecuteAsync(
+                    "DELETE FROM FM_ParticipantGroups WHERE GroupName = @GroupName AND UserId = @UserId",
+                    new { GroupName = groupName, UserId = userId });
+            }
+        }
+
+        #endregion
+
+        /// <summary>PRAGMA table_info 결과 매핑용 내부 클래스 (.NET Framework dynamic 대체)</summary>
+        private class PragmaTableInfo
+        {
+            public int Cid { get; set; }
+            public string Name { get; set; }
+            public string Type { get; set; }
+            public int NotNull { get; set; }
+            public string DfltValue { get; set; }
+            public int Pk { get; set; }
         }
     }
 }
