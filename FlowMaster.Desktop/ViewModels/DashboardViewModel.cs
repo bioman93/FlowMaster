@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -41,6 +42,41 @@ namespace FlowMaster.Desktop.ViewModels
             set => SetProperty(ref _myDrafts, value);
         }
 
+        // ── 전체 문서 (페이지네이션 + 정렬) ────────────────────────────────────
+        private List<ApprovalDocument> _allDocumentsRaw  = new List<ApprovalDocument>();
+        private List<ApprovalDocument> _sortedDocuments  = new List<ApprovalDocument>();
+        private string _sortColumn    = "CreateDate";
+        private bool   _sortAscending = false;
+        private string _searchText    = "";
+
+        private ObservableCollection<ApprovalDocument> _allDocuments = new ObservableCollection<ApprovalDocument>();
+        public ObservableCollection<ApprovalDocument> AllDocuments
+        {
+            get => _allDocuments;
+            private set => SetProperty(ref _allDocuments, value);
+        }
+
+        private int _currentPage = 1;
+        public int CurrentPage
+        {
+            get => _currentPage;
+            private set { if (SetProperty(ref _currentPage, value)) NotifyPageState(); }
+        }
+
+        private int _pageSize = 20;
+        public int PageSize
+        {
+            get => _pageSize;
+            set { if (SetProperty(ref _pageSize, value)) { _currentPage = 1; UpdateAllDocumentsPage(); } }
+        }
+
+        public List<int> PageSizeOptions { get; } = new List<int> { 10, 20, 50, 100 };
+        public int    TotalCount => _sortedDocuments.Count;
+        public int    TotalPages => TotalCount == 0 ? 1 : (int)Math.Ceiling((double)TotalCount / PageSize);
+        public string PageInfo   => $"{CurrentPage} / {TotalPages} 페이지  ({TotalCount:N0}건)";
+        public bool   CanGoNext  => CurrentPage < TotalPages;
+        public bool   CanGoPrev  => CurrentPage > 1;
+
         // ── 폴링 상태 속성 ──────────────────────────────────────────────────────
         /// <summary>
         /// 데이터 갱신 중 여부 (Spinner 표시용)
@@ -75,9 +111,20 @@ namespace FlowMaster.Desktop.ViewModels
 
         // ── 명령 ────────────────────────────────────────────────────────────────
         public ICommand OpenDetailCommand { get; }
+        public ICommand OpenPendingDetailCommand { get; }
+        public ICommand OpenAllDocDetailCommand { get; }
         public ICommand RefreshCommand { get; }
         public ICommand DeleteSelectedCommand { get; }
+        public ICommand NextPageCommand { get; }
+        public ICommand PrevPageCommand { get; }
+        public ICommand SearchCommand   { get; }
         public Action<ApprovalDocument> OnOpenDetailRequest;
+
+        public string SearchText
+        {
+            get => _searchText;
+            set => SetProperty(ref _searchText, value);
+        }
 
         // ── 생성자 ──────────────────────────────────────────────────────────────
         public DashboardViewModel(
@@ -89,11 +136,17 @@ namespace FlowMaster.Desktop.ViewModels
             _userRepo = userRepo;
             _approvalApiClient = approvalApiClient;
             PendingApprovals = new ObservableCollection<ApprovalDocument>();
-            MyDrafts = new ObservableCollection<SelectableDocument>();
+            MyDrafts         = new ObservableCollection<SelectableDocument>();
+            AllDocuments     = new ObservableCollection<ApprovalDocument>();
 
-            OpenDetailCommand = new RelayCommand<SelectableDocument>(sd => OpenDetail(sd?.Document));
-            RefreshCommand    = new AsyncRelayCommand(RefreshAsync);
-            DeleteSelectedCommand = new AsyncRelayCommand(DeleteSelectedAsync);
+            OpenDetailCommand        = new RelayCommand<SelectableDocument>(sd => OpenDetail(sd?.Document));
+            OpenPendingDetailCommand = new RelayCommand<ApprovalDocument>(doc => OpenDetail(doc));
+            OpenAllDocDetailCommand  = new RelayCommand<ApprovalDocument>(doc => OpenDetail(doc));
+            RefreshCommand           = new AsyncRelayCommand(RefreshAsync);
+            DeleteSelectedCommand    = new AsyncRelayCommand(DeleteSelectedAsync);
+            NextPageCommand          = new RelayCommand(() => { _currentPage++; UpdateAllDocumentsPage(); });
+            PrevPageCommand          = new RelayCommand(() => { _currentPage--; UpdateAllDocumentsPage(); });
+            SearchCommand            = new RelayCommand(() => ApplySortAndPage(resetPage: true));
 
             // 30초 주기 폴링 타이머 (자동 시작하지 않음)
             _pollingTimer = new DispatcherTimer
@@ -147,6 +200,10 @@ namespace FlowMaster.Desktop.ViewModels
                 var drafts = await _approvalRepo.GetMyDraftsAsync(_currentUser.UserId);
                 MyDrafts = new ObservableCollection<SelectableDocument>(
                     drafts.Select(d => new SelectableDocument(d)));
+
+                // 전체 문서 목록 (페이지네이션 적용)
+                _allDocumentsRaw = await _approvalRepo.GetAllDocumentsAsync();
+                ApplySortAndPage(resetPage: false);
 
                 _lastRefreshed = DateTime.Now;
                 OnPropertyChanged(nameof(LastRefreshedText));
@@ -325,6 +382,65 @@ namespace FlowMaster.Desktop.ViewModels
             MessageBox.Show($"{deleted}개 문서가 삭제되었습니다.", "완료", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
+        // ── 전체 문서 정렬 / 페이지네이션 ──────────────────────────────────────
+        public string CurrentSortColumn    => _sortColumn;
+        public bool   CurrentSortAscending => _sortAscending;
+
+        /// <summary>
+        /// DataGrid Sorting 이벤트에서 호출. 같은 컬럼이면 방향 반전.
+        /// </summary>
+        public void SortByColumn(string column, bool ascending)
+        {
+            _sortColumn    = column;
+            _sortAscending = ascending;
+            ApplySortAndPage(resetPage: true);
+        }
+
+        private void ApplySortAndPage(bool resetPage)
+        {
+            IEnumerable<ApprovalDocument> q = _allDocumentsRaw;
+
+            // 검색 필터
+            if (!string.IsNullOrWhiteSpace(_searchText))
+            {
+                var kw = _searchText.Trim();
+                q = q.Where(d =>
+                    (d.Title       != null && d.Title.IndexOf(kw, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                    (d.WriterName  != null && d.WriterName.IndexOf(kw, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                    (d.DocId.ToString().Contains(kw)));
+            }
+
+            switch (_sortColumn)
+            {
+                case "DocId":      q = _sortAscending ? q.OrderBy(d => d.DocId)      : q.OrderByDescending(d => d.DocId);      break;
+                case "Title":      q = _sortAscending ? q.OrderBy(d => d.Title)      : q.OrderByDescending(d => d.Title);      break;
+                case "WriterName": q = _sortAscending ? q.OrderBy(d => d.WriterName) : q.OrderByDescending(d => d.WriterName); break;
+                case "StatusDisplay": q = _sortAscending ? q.OrderBy(d => d.Status)  : q.OrderByDescending(d => d.Status);     break;
+                default:           q = _sortAscending ? q.OrderBy(d => d.CreateDate) : q.OrderByDescending(d => d.CreateDate); break;
+            }
+            _sortedDocuments = q.ToList();
+            if (resetPage) _currentPage = 1;
+            UpdateAllDocumentsPage();
+        }
+
+        private void UpdateAllDocumentsPage()
+        {
+            var page = _sortedDocuments
+                .Skip((_currentPage - 1) * PageSize)
+                .Take(PageSize);
+            AllDocuments = new ObservableCollection<ApprovalDocument>(page);
+            NotifyPageState();
+        }
+
+        private void NotifyPageState()
+        {
+            OnPropertyChanged(nameof(TotalCount));
+            OnPropertyChanged(nameof(TotalPages));
+            OnPropertyChanged(nameof(PageInfo));
+            OnPropertyChanged(nameof(CanGoNext));
+            OnPropertyChanged(nameof(CanGoPrev));
+        }
+
         // ── IDisposable ─────────────────────────────────────────────────────────
         public void Dispose()
         {
@@ -355,10 +471,11 @@ namespace FlowMaster.Desktop.ViewModels
         public bool CanSelect => Document.Status != ApprovalStatus.Approved;
 
         // DataGrid 컬럼 바인딩 편의 프로퍼티
-        public int    DocId      => Document.DocId;
-        public string Title      => Document.Title;
-        public string StatusDisplay => GetStatusText(Document.Status);
+        public int    DocId               => Document.DocId;
+        public string Title               => Document.Title;
+        public string StatusDisplay       => GetStatusText(Document.Status);
         public System.DateTime CreateDate => Document.CreateDate;
+        public string CurrentApproverName => Document.CurrentApproverName;
 
         public SelectableDocument(ApprovalDocument doc) { Document = doc; }
 

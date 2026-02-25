@@ -12,9 +12,12 @@
     </UserControl.Resources>
     <Grid Margin="20">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" /> <!-- Pending Header + Grid (결재자만 표시) -->
-            <RowDefinition Height="Auto" /> <!-- My Docs Header + 선택삭제 버튼 -->
-            <RowDefinition Height="*" />    <!-- My Docs Grid -->
+            <RowDefinition Height="Auto" /> <!-- Row 0: Pending Header + Grid (결재자만 표시) -->
+            <RowDefinition Height="Auto" /> <!-- Row 1: My Docs Header + 선택삭제 버튼 -->
+            <RowDefinition Height="Auto" /> <!-- Row 2: My Docs Grid -->
+            <RowDefinition Height="Auto" /> <!-- Row 3: All Docs Header + PageSize 선택 -->
+            <RowDefinition Height="*"    /> <!-- Row 4: All Docs DataGrid -->
+            <RowDefinition Height="Auto" /> <!-- Row 5: 페이지 이동 컨트롤 -->
         </Grid.RowDefinitions>
 
         <!-- 1. Pending Approvals (결재 권한 사용자만 표시) -->
@@ -26,8 +29,8 @@
                       BorderBrush="#e4dcd3" BorderThickness="1" Background="White"
                       MaxHeight="250">
                 <DataGrid.InputBindings>
-                    <MouseBinding MouseAction="LeftDoubleClick" 
-                                  Command="{Binding OpenDetailCommand}" 
+                    <MouseBinding MouseAction="LeftDoubleClick"
+                                  Command="{Binding OpenPendingDetailCommand}"
                                   CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=DataGrid}, Path=SelectedItem}"/>
                 </DataGrid.InputBindings>
                 <DataGrid.Columns>
@@ -45,7 +48,7 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="내가 올린 문서 (My Documents)"
+            <TextBlock Grid.Column="0" Text="내 문서 (My Documents)"
                        FontSize="18" FontWeight="Bold" Foreground="#002c5f"/>
             <Button Grid.Column="1" Content="선택 삭제"
                     Command="{Binding DeleteSelectedCommand}"
@@ -57,7 +60,7 @@
                   ItemsSource="{Binding MyDrafts}" AutoGenerateColumns="False"
                   IsReadOnly="False" CanUserAddRows="False" CanUserDeleteRows="False"
                   BorderBrush="#e4dcd3" BorderThickness="1" Background="White"
-                  SelectionMode="Single">
+                  MaxHeight="200" SelectionMode="Single">
             <DataGrid.InputBindings>
                 <MouseBinding MouseAction="LeftDoubleClick"
                               Command="{Binding OpenDetailCommand}"
@@ -81,9 +84,97 @@
                 </DataGridTemplateColumn>
                 <DataGridTextColumn Header="DocId" Binding="{Binding DocId}" Width="60" IsReadOnly="True"/>
                 <DataGridTextColumn Header="제목" Binding="{Binding Title}" Width="*" IsReadOnly="True"/>
+                <DataGridTextColumn Header="결재자" Binding="{Binding CurrentApproverName}" Width="120" IsReadOnly="True"/>
                 <DataGridTextColumn Header="상태" Binding="{Binding StatusDisplay}" Width="100" IsReadOnly="True"/>
                 <DataGridTextColumn Header="작성일" Binding="{Binding CreateDate, StringFormat=yyyy-MM-dd}" Width="120" IsReadOnly="True"/>
             </DataGrid.Columns>
         </DataGrid>
+
+        <!-- 3. All Documents Header + PageSize 선택 -->
+        <Grid Grid.Row="3" Margin="0,20,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="전체 문서 (All Documents)"
+                       FontSize="18" FontWeight="Bold" Foreground="#002c5f"
+                       VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                <TextBlock Text="페이지당:" VerticalAlignment="Center" Margin="0,0,6,0"
+                           Foreground="#555" FontSize="13"/>
+                <ComboBox ItemsSource="{Binding PageSizeOptions}"
+                          SelectedItem="{Binding PageSize}"
+                          Width="70" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- 4. All Documents DataGrid -->
+        <DataGrid Grid.Row="4" x:Name="AllDocsGrid"
+                  ItemsSource="{Binding AllDocuments}" AutoGenerateColumns="False"
+                  IsReadOnly="True" CanUserAddRows="False" CanUserDeleteRows="False"
+                  BorderBrush="#e4dcd3" BorderThickness="1" Background="White"
+                  SelectionMode="Single"
+                  Sorting="AllDocsGrid_Sorting">
+            <DataGrid.InputBindings>
+                <MouseBinding MouseAction="LeftDoubleClick"
+                              Command="{Binding OpenAllDocDetailCommand}"
+                              CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=DataGrid}, Path=SelectedItem}"/>
+            </DataGrid.InputBindings>
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="DocId"   Binding="{Binding DocId}"       Width="60"  SortMemberPath="DocId"       CanUserSort="True"/>
+                <DataGridTextColumn Header="제목"    Binding="{Binding Title}"        Width="*"   SortMemberPath="Title"       CanUserSort="True"/>
+                <DataGridTextColumn Header="작성자"  Binding="{Binding WriterName}"   Width="120" SortMemberPath="WriterName"  CanUserSort="True"/>
+                <DataGridTextColumn Header="상태"    Binding="{Binding StatusDisplay}" Width="90" SortMemberPath="StatusDisplay" CanUserSort="True"/>
+                <DataGridTextColumn Header="작성일"  Binding="{Binding CreateDate, StringFormat=yyyy-MM-dd}" Width="110" SortMemberPath="CreateDate" CanUserSort="True"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- 5. 페이지 이동 + 검색 컨트롤 -->
+        <Border Grid.Row="5" Margin="0,6,0,0" Padding="8,6"
+                Background="#f5f5f5" BorderBrush="#e4dcd3" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>  <!-- 페이지 정보 -->
+                    <ColumnDefinition Width="*"/>     <!-- 검색 -->
+                    <ColumnDefinition Width="Auto"/>  <!-- 이전/다음 -->
+                </Grid.ColumnDefinitions>
+
+                <!-- 페이지 정보 -->
+                <TextBlock Grid.Column="0" Text="{Binding PageInfo}"
+                           VerticalAlignment="Center" Foreground="#555" FontSize="13" Margin="0,0,16,0"/>
+
+                <!-- 검색 -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Width="200" Padding="6,4" Margin="0,0,6,0"
+                             VerticalAlignment="Center">
+                        <TextBox.InputBindings>
+                            <KeyBinding Key="Return" Command="{Binding SearchCommand}"/>
+                        </TextBox.InputBindings>
+                    </TextBox>
+                    <Button Content="검색"
+                            Command="{Binding SearchCommand}"
+                            Padding="12,4" FontWeight="SemiBold" BorderThickness="1"/>
+                    <Button Content="초기화"
+                            Padding="10,4" Margin="4,0,0,0" BorderThickness="1"
+                            Click="SearchReset_Click"/>
+                </StackPanel>
+
+                <!-- 이전 / 다음 버튼 -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <Button Content="◀ 이전"
+                            Command="{Binding PrevPageCommand}"
+                            IsEnabled="{Binding CanGoPrev}"
+                            Padding="14,5" Margin="0,0,6,0"
+                            FontWeight="SemiBold" BorderThickness="1"/>
+                    <Button Content="다음 ▶"
+                            Command="{Binding NextPageCommand}"
+                            IsEnabled="{Binding CanGoNext}"
+                            Padding="14,5"
+                            FontWeight="SemiBold" BorderThickness="1"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
     </Grid>
 </UserControl>

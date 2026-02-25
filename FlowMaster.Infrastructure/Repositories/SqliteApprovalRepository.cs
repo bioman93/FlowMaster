@@ -145,6 +145,9 @@ namespace FlowMaster.Infrastructure.Repositories
 
             if (!columns.Contains("OutputPath"))
                 conn.Execute("ALTER TABLE FM_ApprovalDocuments ADD COLUMN OutputPath TEXT");
+
+            if (!columns.Contains("CurrentApproverName"))
+                conn.Execute("ALTER TABLE FM_ApprovalDocuments ADD COLUMN CurrentApproverName TEXT");
         }
 
         private IDbConnection GetConnection() => new SqliteConnection(_connectionString);
@@ -155,9 +158,9 @@ namespace FlowMaster.Infrastructure.Repositories
             {
                 var sql = @"
                     INSERT INTO FM_ApprovalDocuments
-                        (Title, WriterId, WriterName, CreateDate, Status, CurrentApproverId, ApprovalId, TableType, GenType, InjType, Description, Version, OutputPath)
+                        (Title, WriterId, WriterName, CreateDate, Status, CurrentApproverId, CurrentApproverName, ApprovalId, TableType, GenType, InjType, Description, Version, OutputPath)
                     VALUES
-                        (@Title, @WriterId, @WriterName, @CreateDate, @Status, @CurrentApproverId, @ApprovalId, @TableType, @GenType, @InjType, @Description, @Version, @OutputPath);
+                        (@Title, @WriterId, @WriterName, @CreateDate, @Status, @CurrentApproverId, @CurrentApproverName, @ApprovalId, @TableType, @GenType, @InjType, @Description, @Version, @OutputPath);
                     SELECT last_insert_rowid();";
                 return await conn.ExecuteScalarAsync<int>(sql, doc);
             }
@@ -172,8 +175,8 @@ namespace FlowMaster.Infrastructure.Repositories
                     SET Title = @Title, UpdateDate = @UpdateDate, Status = @Status,
                         TableType = @TableType, GenType = @GenType, InjType = @InjType,
                         Description = @Description, ApproverComment = @ApproverComment,
-                        CurrentApproverId = @CurrentApproverId, ApprovalId = @ApprovalId,
-                        ApprovalTime = @ApprovalTime,
+                        CurrentApproverId = @CurrentApproverId, CurrentApproverName = @CurrentApproverName,
+                        ApprovalId = @ApprovalId, ApprovalTime = @ApprovalTime,
                         Version = @Version, OutputPath = @OutputPath
                     WHERE DocId = @DocId", doc);
             }

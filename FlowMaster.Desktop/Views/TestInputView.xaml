@@ -31,17 +31,16 @@
         </Style>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <Grid Margin="10">
+    <Grid Margin="10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>  <!-- Row 0: Header -->
                 <RowDefinition Height="Auto"/>  <!-- Row 1: 7:3 main area -->
                 <RowDefinition Height="*"/>     <!-- Row 2: Checklist -->
-                <RowDefinition Height="Auto"/>  <!-- Row 3: Bottom Buttons -->
+                <RowDefinition Height="Auto"/>  <!-- Row 3: 설명 (BA2만) -->
             </Grid.RowDefinitions>
 
             <!-- ── Header ── -->
-            <Border Grid.Row="0" Background="#002c5f" CornerRadius="8,8,0,0" Padding="15">
+            <Border Grid.Row="0" Background="#002c5f" CornerRadius="8,8,0,0" Padding="10,8">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -49,7 +48,6 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="📋" FontSize="20" Foreground="White"/>
                         <TextBox Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  FontSize="18" FontWeight="Bold" Foreground="White"
                                  Background="Transparent" BorderThickness="0"
@@ -65,41 +63,79 @@
             </Border>
 
             <!-- ── 7:3 Main Area ── -->
-            <Grid Grid.Row="1" Margin="0,10,0,0">
+            <Grid Grid.Row="1" Margin="0,6,0,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="7*"/>
                     <ColumnDefinition Width="3*"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- ── Left: 문서 유형 (7*) ── -->
-                <Border Grid.Column="0" Background="White" Margin="0,0,5,0" Padding="15"
+                <Border Grid.Column="0" Background="White" Margin="0,0,5,0" Padding="10"
                         BorderBrush="#ddd" BorderThickness="1" CornerRadius="8">
                     <StackPanel>
-                        <TextBlock Text="문서 유형" Style="{StaticResource SectionHeader}"/>
 
-                        <!-- 유형 / 세대 / 분사유형 (가로 배치) -->
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                            <TextBlock Text="유형:" Style="{StaticResource FieldLabel}"/>
-                            <TextBlock Text="{Binding TableType}" FontWeight="Bold" Foreground="#002c5f"
-                                       VerticalAlignment="Center" MinWidth="35"/>
-                            <TextBlock Text="세대:" Style="{StaticResource FieldLabel}" Margin="20,0,5,0"/>
-                            <ComboBox Width="90" VerticalAlignment="Center"
-                                      SelectedValue="{Binding GenType, UpdateSourceTrigger=PropertyChanged}"
-                                      SelectedValuePath="Content"
-                                      IsEnabled="{Binding CanEdit}">
-                                <ComboBoxItem>1세대</ComboBoxItem>
-                                <ComboBoxItem>2세대</ComboBoxItem>
-                                <ComboBoxItem>3세대</ComboBoxItem>
-                            </ComboBox>
-                            <TextBlock Text="분사유형:" Style="{StaticResource FieldLabel}" Margin="20,0,5,0"/>
-                            <ComboBox Width="80" VerticalAlignment="Center"
-                                      SelectedValue="{Binding InjType, UpdateSourceTrigger=PropertyChanged}"
-                                      SelectedValuePath="Content"
-                                      IsEnabled="{Binding CanSelectInjType}">
-                                <ComboBoxItem>MPI</ComboBoxItem>
-                                <ComboBoxItem>GDI</ComboBoxItem>
-                            </ComboBox>
-                        </StackPanel>
+                        <!-- 유형 / 세대 / 분사유형 / 버전 (가로 배치, 버전이 남은 공간 채움) -->
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>  <!-- 고정 항목들 -->
+                                <ColumnDefinition Width="Auto"/>  <!-- 버전 *: 레이블 -->
+                                <ColumnDefinition Width="*"/>     <!-- 버전 TextBox -->
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                <TextBlock Text="유형:" Style="{StaticResource FieldLabel}"/>
+                                <TextBlock Text="{Binding TableType}" FontWeight="Bold" Foreground="#002c5f"
+                                           VerticalAlignment="Center" MinWidth="35"/>
+                                <TextBlock Text="세대:" Style="{StaticResource FieldLabel}" Margin="20,0,5,0"/>
+                                <ComboBox Width="90" VerticalAlignment="Center"
+                                          SelectedValue="{Binding GenType, UpdateSourceTrigger=PropertyChanged}"
+                                          SelectedValuePath="Content"
+                                          IsEnabled="{Binding CanEdit}">
+                                    <ComboBoxItem>1세대</ComboBoxItem>
+                                    <ComboBoxItem>2세대</ComboBoxItem>
+                                    <ComboBoxItem>3세대</ComboBoxItem>
+                                </ComboBox>
+                                <TextBlock Text="분사유형:" Style="{StaticResource FieldLabel}" Margin="20,0,5,0"/>
+                                <ComboBox Width="80" VerticalAlignment="Center"
+                                          SelectedValue="{Binding InjType, UpdateSourceTrigger=PropertyChanged}"
+                                          SelectedValuePath="Content"
+                                          IsEnabled="{Binding CanSelectInjType}">
+                                    <ComboBoxItem>MPI</ComboBoxItem>
+                                    <ComboBoxItem>GDI</ComboBoxItem>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock Grid.Column="1" Text="버전 *:" Style="{StaticResource FieldLabel}"
+                                       Margin="20,0,5,0" Foreground="#c0392b" VerticalAlignment="Center"/>
+                            <!-- 버전 TextBox + 자동완성 Popup (레이아웃 영향 없음) -->
+                            <Grid Grid.Column="2" VerticalAlignment="Center">
+                                <TextBox x:Name="VersionBox"
+                                         Text="{Binding Version, UpdateSourceTrigger=PropertyChanged}"
+                                         IsEnabled="{Binding CanEdit}" Padding="4,3"/>
+                                <Popup IsOpen="{Binding IsVersionSuggestionsVisible, Mode=TwoWay}"
+                                       PlacementTarget="{Binding ElementName=VersionBox}"
+                                       Placement="Bottom"
+                                       StaysOpen="False"
+                                       MinWidth="{Binding ActualWidth, ElementName=VersionBox}">
+                                    <Border BorderBrush="#002c5f" BorderThickness="1" Background="White">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="220">
+                                            <ItemsControl ItemsSource="{Binding VersionSuggestions}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Button Command="{Binding ElementName=VersionBox, Path=DataContext.SelectVersionSuggestionCommand}"
+                                                                CommandParameter="{Binding}"
+                                                                BorderThickness="0" Background="Transparent"
+                                                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                                Padding="6,4" Cursor="Hand">
+                                                            <!-- TextBlock으로 감싸야 '_'가 액세스키로 처리되지 않음 -->
+                                                            <TextBlock Text="{Binding}" FontFamily="Consolas" FontSize="12"/>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                        </Grid>
 
                         <!-- 필드 그리드 -->
                         <Grid>
@@ -108,29 +144,20 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
-                                <RowDefinition Height="32"/>  <!-- 버전 -->
-                                <RowDefinition Height="28"/>  <!-- 담당자 -->
+                                <RowDefinition Height="22"/>  <!-- 담당자 -->
                                 <RowDefinition Height="Auto"/> <!-- 평가결과 (조건부) -->
-                                <RowDefinition Height="32"/>  <!-- 산출물경로 -->
+                                <RowDefinition Height="26"/>  <!-- 산출물경로 -->
                             </Grid.RowDefinitions>
 
-                            <!-- 버전 (필수) -->
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="버전 *:" Style="{StaticResource FieldLabel}"
-                                       Foreground="#c0392b"/>
-                            <TextBox Grid.Row="0" Grid.Column="1"
-                                     Text="{Binding Version, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding CanEdit}" Padding="4,3"
-                                     VerticalAlignment="Center"/>
-
                             <!-- 담당자 -->
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="담당자:" Style="{StaticResource FieldLabel}"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding WriterName}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="담당자:" Style="{StaticResource FieldLabel}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding WriterName}" VerticalAlignment="Center"/>
 
                             <!-- 평가결과 (모든 메인항목 채워졌을 때) -->
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="평가결과:" Style="{StaticResource FieldLabel}"
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="평가결과:" Style="{StaticResource FieldLabel}"
                                        Margin="0,6,5,6"
                                        Visibility="{Binding ShowOverallEvaluation, Converter={StaticResource BoolToVis}}"/>
-                            <Border Grid.Row="2" Grid.Column="1" Margin="0,6,0,6"
+                            <Border Grid.Row="1" Grid.Column="1" Margin="0,6,0,6"
                                     Background="{Binding OverallEvaluationColor}"
                                     CornerRadius="4" Padding="12,4" HorizontalAlignment="Left"
                                     Visibility="{Binding ShowOverallEvaluation, Converter={StaticResource BoolToVis}}">
@@ -139,23 +166,15 @@
                             </Border>
 
                             <!-- 산출물경로 -->
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="산출물:" Style="{StaticResource FieldLabel}"/>
-                            <TextBox Grid.Row="3" Grid.Column="1"
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="산출물:" Style="{StaticResource FieldLabel}"/>
+                            <TextBox Grid.Row="2" Grid.Column="1"
                                      Text="{Binding OutputPath, UpdateSourceTrigger=PropertyChanged}"
                                      IsEnabled="{Binding CanEdit}" Padding="4,3"
                                      VerticalAlignment="Center"/>
                         </Grid>
 
-                        <!-- 설명 (BA2만) -->
-                        <StackPanel Margin="0,10,0,0" Visibility="{Binding ShowDescription}">
-                            <TextBlock Text="설명:" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
-                            <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding CanEdit}" AcceptsReturn="True" TextWrapping="Wrap"
-                                     MinHeight="60" MaxHeight="120" VerticalScrollBarVisibility="Auto"/>
-                        </StackPanel>
-
                         <!-- 참여자 섹션 -->
-                        <StackPanel Margin="0,14,0,0">
+                        <StackPanel Margin="0,6,0,0">
                             <TextBlock Text="참여자" Style="{StaticResource SectionHeader}" Margin="0,0,0,6"/>
 
                             <!-- 검색 입력 + 드롭다운 -->
@@ -225,19 +244,22 @@
                             </ItemsControl>
                         </StackPanel>
 
-                        <!-- 임시저장(수정) / 취소 / 결재 요청 버튼 -->
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                        <!-- 임시저장(수정) / 취소 / 결재 요청 / 삭제 버튼 -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                            <Button Content="삭제" Command="{Binding DeleteCommand}"
+                                    Style="{StaticResource PanelButton}" Background="#f44336" Foreground="White"
+                                    Visibility="{Binding CanDelete}"/>
                             <Button Content="{Binding SaveButtonText}" Command="{Binding SaveCommand}"
                                     Visibility="{Binding CanSave}"
                                     Style="{StaticResource PanelButton}"
                                     Background="#4CAF50" Foreground="White"/>
-                            <Button Content="취소" Command="{Binding CancelSubmitCommand}"
+                            <Button Content="결재 요청 취소" Command="{Binding CancelSubmitCommand}"
                                     Visibility="{Binding CanCancel}"
                                     Style="{StaticResource PanelButton}"
                                     Background="#f44336" Foreground="White"/>
                             <Button Content="결재 요청" Command="{Binding SubmitCommand}"
                                     Visibility="{Binding CanSubmit}"
-                                    IsEnabled="{Binding IsVersionFilled}"
+                                    IsEnabled="{Binding CanRequestApproval}"
                                     Style="{StaticResource PanelButton}"
                                     Background="#002c5f" Foreground="White"/>
                         </StackPanel>
@@ -245,10 +267,9 @@
                 </Border>
 
                 <!-- ── Right: 결재 정보 (3*) ── -->
-                <Border Grid.Column="1" Background="White" Margin="5,0,0,0" Padding="15"
+                <Border Grid.Column="1" Background="White" Margin="5,0,0,0" Padding="10"
                         BorderBrush="#ddd" BorderThickness="1" CornerRadius="8">
                     <StackPanel>
-                        <TextBlock Text="결재 정보" Style="{StaticResource SectionHeader}"/>
 
                         <!-- 결재자 -->
                         <TextBlock Text="결재자:" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
@@ -299,7 +320,7 @@
             </Grid>
 
             <!-- ── Checklist DataGrid ── -->
-            <Border Grid.Row="2" Background="White" Margin="0,10,0,0"
+            <Border Grid.Row="2" Background="White" Margin="0,6,0,0"
                     BorderBrush="#ddd" BorderThickness="1" CornerRadius="8">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -318,7 +339,7 @@
                     <DataGrid Grid.Row="1" ItemsSource="{Binding ChecklistItems}"
                               AutoGenerateColumns="False" CanUserAddRows="False"
                               HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                              BorderThickness="0" MinHeight="200" MaxHeight="400"
+                              BorderThickness="0" CanUserSortColumns="False"
                               IsReadOnly="{Binding IsReadOnly}"
                               BeginningEdit="Checklist_BeginningEdit">
                         <!-- 헤더 행 (IsHeader=true): 굵은 글씨 + 배경색 -->
@@ -357,17 +378,17 @@
                 </Grid>
             </Border>
 
-            <!-- ── Bottom Buttons: 목록으로, 삭제 ── -->
-            <Border Grid.Row="3" Background="#f8f8f8" Margin="0,10,0,0" Padding="12"
-                    CornerRadius="8">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button Content="목록으로" Command="{Binding GoBackCommand}"
-                            Style="{StaticResource PanelButton}" Background="#e4dcd3"/>
-                    <Button Content="삭제" Command="{Binding DeleteCommand}"
-                            Style="{StaticResource PanelButton}" Background="#f44336" Foreground="White"
-                            Visibility="{Binding CanDelete}"/>
+            <!-- ── 설명 (BA2만, 체크리스트 아래) ── -->
+            <Border Grid.Row="3" Background="White" Margin="0,6,0,0" Padding="10,8"
+                    BorderBrush="#ddd" BorderThickness="1" CornerRadius="8"
+                    Visibility="{Binding ShowDescription}">
+                <StackPanel>
+                    <TextBlock Text="설명:" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
+                    <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
+                             IsEnabled="{Binding CanEdit}" AcceptsReturn="True" TextWrapping="Wrap"
+                             MinHeight="60" VerticalScrollBarVisibility="Auto"/>
                 </StackPanel>
             </Border>
-        </Grid>
-    </ScrollViewer>
+
+    </Grid>
 </UserControl>

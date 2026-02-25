@@ -26,6 +26,7 @@ namespace FlowMaster.Desktop.ViewModels
         private bool _useInternalDb; // 내부 DB 사용 여부
         private string _approvalId; // API 결재 ID (APV-xxx)
         private string _writerId;   // 문서 작성자 ID (취소 권한 확인)
+        private CancellationTokenSource _versionSuggestionCts;
 
         #region Properties
 
@@ -100,7 +101,12 @@ namespace FlowMaster.Desktop.ViewModels
                 {
                     UpdateAutoTitle();
                     OnPropertyChanged(nameof(IsVersionFilled));
+                    OnPropertyChanged(nameof(CanRequestApproval));
                     OnPropertyChanged(nameof(CanSubmit));
+                    if (value != null && value.Length >= 4)
+                        ScheduleVersionSuggestion(value);
+                    else
+                        IsVersionSuggestionsVisible = false;
                 }
             }
         }
@@ -144,7 +150,11 @@ namespace FlowMaster.Desktop.ViewModels
         public User SelectedApprover
         {
             get => _selectedApprover;
-            set => SetProperty(ref _selectedApprover, value);
+            set
+            {
+                if (SetProperty(ref _selectedApprover, value))
+                    OnPropertyChanged(nameof(CanRequestApproval));
+            }
         }
 
         public List<User> AvailableApprovers { get; set; } = new List<User>();
@@ -170,6 +180,8 @@ namespace FlowMaster.Desktop.ViewModels
         public Visibility CanSubmit => (StatusText == "작성중" || StatusText == "임시저장" || StatusText == "반려" || _isNewDocument) ? Visibility.Visible : Visibility.Collapsed;
         /// <summary>버전이 입력된 경우에만 결재 요청 버튼 활성화</summary>
         public bool IsVersionFilled => !string.IsNullOrWhiteSpace(Version);
+        /// <summary>결재자 선택 + 버전 입력 모두 완료된 경우에만 결재 요청 버튼 활성화</summary>
+        public bool CanRequestApproval => SelectedApprover != null && IsVersionFilled;
         /// <summary>결재 처리 일시 표시 (승인완료 또는 반려)</summary>
         public bool ShowApprovalDate => StatusText == "승인완료" || StatusText == "반려";
         /// <summary>승인완료 여부 (하위 호환)</summary>
@@ -183,6 +195,20 @@ namespace FlowMaster.Desktop.ViewModels
         /// <summary>결재 요청 취소 버튼: 승인대기 상태에서 원작성자에게만 표시</summary>
         public Visibility CanCancel => StatusText == "승인대기" && _currentUser?.UserId == _writerId
             ? Visibility.Visible : Visibility.Collapsed;
+
+        // ── 버전 자동완성 ───────────────────────────────────────────────
+        public ObservableCollection<string> VersionSuggestions { get; } = new ObservableCollection<string>();
+
+        private bool _isVersionSuggestionsVisible;
+        public bool IsVersionSuggestionsVisible
+        {
+            get => _isVersionSuggestionsVisible;
+            set => SetProperty(ref _isVersionSuggestionsVisible, value);
+        }
+
+        public ICommand SelectVersionSuggestionCommand { get; }
+        /// <summary>버전 제안 선택 후 View에서 TextBox 포커스를 되돌리기 위한 콜백</summary>
+        public Action AfterVersionSelected { get; set; }
 
         // ── 참여자(Watcher) ────────────────────────────────────────────
         public ObservableCollection<User> Participants { get; } = new ObservableCollection<User>();
@@ -247,6 +273,12 @@ namespace FlowMaster.Desktop.ViewModels
             DeleteCommand = new AsyncRelayCommand(DeleteAsync);
             AddParticipantCommand = new RelayCommand<User>(AddParticipant);
             RemoveParticipantCommand = new RelayCommand<User>(RemoveParticipant);
+            SelectVersionSuggestionCommand = new RelayCommand<string>(v =>
+            {
+                Version = v;
+                IsVersionSuggestionsVisible = false;
+                AfterVersionSelected?.Invoke();
+            });
         }
 
         /// <summary>
@@ -259,12 +291,12 @@ namespace FlowMaster.Desktop.ViewModels
             _writerId = currentUser?.UserId;
             _allUsers = approvers ?? new List<User>();
             // 결재자 목록: Approver/Admin 역할만 표시
-            AvailableApprovers = approvers
+            AvailableApprovers = _allUsers
                 .Where(u => u.Role == UserRole.Approver || u.Role == UserRole.Admin)
                 .ToList();
 
             TableType = tableType;
-            WriterName = currentUser.Name;
+            WriterName = currentUser?.Name ?? "";
             Title = $"새 {tableType} 테스트 문서";
             StatusText = "작성중";
             StatusColor = "#666";
@@ -320,7 +352,7 @@ namespace FlowMaster.Desktop.ViewModels
             _currentUser = currentUser;
             _allUsers = approvers ?? new List<User>();
             // 결재자 목록: Approver/Admin 역할만 표시
-            AvailableApprovers = approvers
+            AvailableApprovers = _allUsers
                 .Where(u => u.Role == UserRole.Approver || u.Role == UserRole.Admin)
                 .ToList();
 
@@ -643,6 +675,7 @@ namespace FlowMaster.Desktop.ViewModels
                     Version = Version,
                     OutputPath = OutputPath,
                     CurrentApproverId = SelectedApprover?.UserId,
+                    CurrentApproverName = SelectedApprover?.Name,
                     CreateDate = DateTime.Now,
                     UpdateDate = DateTime.Now,
                     // 이미 상신된 문서(승인대기/승인완료/반려)는 상태 보존, 미상신만 TempSaved
@@ -708,6 +741,7 @@ namespace FlowMaster.Desktop.ViewModels
                     Version = Version,
                     OutputPath = OutputPath,
                     CurrentApproverId = SelectedApprover.UserId,
+                    CurrentApproverName = SelectedApprover?.Name,
                     CreateDate = DateTime.Now,
                     UpdateDate = DateTime.Now,
                     Status = ApprovalStatus.Pending
@@ -795,6 +829,7 @@ namespace FlowMaster.Desktop.ViewModels
                     OutputPath = OutputPath,
                     ApproverComment = ApproverComment,
                     CurrentApproverId = SelectedApprover?.UserId,
+                    CurrentApproverName = SelectedApprover?.Name,
                     ApprovalId = _approvalId,
                     ApprovalTime = approvalTime,
                     CreateDate = DateTime.Now,
@@ -854,6 +889,7 @@ namespace FlowMaster.Desktop.ViewModels
                     OutputPath = OutputPath,
                     ApproverComment = ApproverComment,
                     CurrentApproverId = SelectedApprover?.UserId,
+                    CurrentApproverName = SelectedApprover?.Name,
                     ApprovalId = _approvalId,
                     ApprovalTime = rejectTime,
                     CreateDate = DateTime.Now,
@@ -979,15 +1015,24 @@ namespace FlowMaster.Desktop.ViewModels
         private void ScheduleParticipantSearch()
         {
             _participantSearchCts?.Cancel();
+            _participantSearchCts?.Dispose();
             _participantSearchCts = new CancellationTokenSource();
             var token = _participantSearchCts.Token;
             var searchText = ParticipantSearchText;
 
-            Task.Delay(300, token).ContinueWith(_ =>
+            Task.Run(async () =>
             {
-                if (token.IsCancellationRequested) return;
-                Application.Current.Dispatcher.Invoke(() => RunParticipantSearch(searchText));
-            }, token, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Default);
+                try
+                {
+                    await Task.Delay(300, token);
+                    if (token.IsCancellationRequested) return;
+                    Application.Current.Dispatcher.Invoke(() => RunParticipantSearch(searchText));
+                }
+                catch (OperationCanceledException)
+                {
+                    // 정상적인 debounce 취소 — 무시
+                }
+            });
         }
 
         private void RunParticipantSearch(string searchText)
@@ -1008,6 +1053,72 @@ namespace FlowMaster.Desktop.ViewModels
 
             foreach (var u in matches) ParticipantSearchResults.Add(u);
             IsParticipantSearchVisible = ParticipantSearchResults.Count > 0;
+        }
+
+        // ── 버전 자동완성 ───────────────────────────────────────────────
+
+        private void ScheduleVersionSuggestion(string keyword)
+        {
+            _versionSuggestionCts?.Cancel();
+            _versionSuggestionCts?.Dispose();
+            _versionSuggestionCts = new CancellationTokenSource();
+            var token = _versionSuggestionCts.Token;
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(300, token);
+                    if (token.IsCancellationRequested) return;
+
+                    var suggestions = await GetVersionSuggestionsAsync(keyword);
+
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        VersionSuggestions.Clear();
+                        foreach (var s in suggestions) VersionSuggestions.Add(s);
+                        IsVersionSuggestionsVisible = VersionSuggestions.Count > 0;
+                    });
+                }
+                catch (OperationCanceledException) { }
+            });
+        }
+
+        private async Task<List<string>> GetVersionSuggestionsAsync(string keyword)
+        {
+            var docs = await _internalDb.GetAllDocumentsAsync();
+
+            // 키워드가 포함된 버전만, 현재 입력값과 동일한 것은 제외
+            var filtered = docs
+                .Where(d => !string.IsNullOrWhiteSpace(d.Version)
+                         && d.Version.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0
+                         && !string.Equals(d.Version, Version, StringComparison.OrdinalIgnoreCase));
+
+            // 우선순위 점수 산정
+            // 1. GenType 일치(+2) + InjType 일치(+2)
+            // 2. 최신 문서 (CreateDate, tiebreaker)
+            // 3. 키워드 일치율 (keyword.Length / version.Length 비율, 높을수록 정확한 매칭)
+            var scored = filtered.Select(d => new
+            {
+                d.Version,
+                d.CreateDate,
+                Score = (string.Equals(d.GenType, GenType, StringComparison.OrdinalIgnoreCase) ? 2 : 0)
+                      + (string.Equals(d.InjType, InjType, StringComparison.OrdinalIgnoreCase) ? 2 : 0)
+                      + (d.Version.Length > 0 ? (double)keyword.Length / d.Version.Length : 0)
+            })
+            .OrderByDescending(x => x.Score)
+            .ThenByDescending(x => x.CreateDate);
+
+            // 중복 제거 후 10개
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var result = new List<string>();
+            foreach (var item in scored)
+            {
+                if (seen.Add(item.Version))
+                    result.Add(item.Version);
+                if (result.Count >= 10) break;
+            }
+            return result;
         }
 
         #endregion

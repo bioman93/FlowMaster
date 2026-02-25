@@ -1,4 +1,5 @@
 using System.Windows.Controls;
+using FlowMaster.Desktop.ViewModels;
 using FlowMaster.Domain.Models;
 
 namespace FlowMaster.Desktop.Views
@@ -8,6 +9,17 @@ namespace FlowMaster.Desktop.Views
         public TestInputView()
         {
             InitializeComponent();
+            DataContextChanged += (s, e) =>
+            {
+                if (e.NewValue is TestInputViewModel vm)
+                {
+                    vm.AfterVersionSelected = () =>
+                    {
+                        VersionBox.Focus();
+                        VersionBox.CaretIndex = VersionBox.Text?.Length ?? 0;
+                    };
+                }
+            };
         }
 
         /// <summary>

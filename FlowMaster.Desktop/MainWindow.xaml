@@ -6,7 +6,7 @@
         xmlns:vm="clr-namespace:FlowMaster.Desktop.ViewModels"
         xmlns:views="clr-namespace:FlowMaster.Desktop.Views"
         mc:Ignorable="d"
-        Title="{Binding Title}" Height="720" Width="1024"
+        Title="{Binding Title}" Height="1020" Width="1280"
         WindowStartupLocation="CenterScreen">
     
     <Window.Resources>
@@ -83,12 +83,6 @@
                             <TextBlock Text="대시보드" FontSize="16"/>
                         </StackPanel>
                     </Button>
-                    <Button Command="{Binding NavigateWriteCommand}" Style="{StaticResource MenuButton}">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="📝" Margin="0,0,10,0"/>
-                            <TextBlock Text="결재 작성" FontSize="16"/>
-                        </StackPanel>
-                    </Button>
                     <Button Command="{Binding NavigateTestInputCommand}" Style="{StaticResource MenuButton}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="📋" Margin="0,0,10,0"/>
@@ -135,7 +129,9 @@
 
         <!-- Main Content (Hyundai Light Sand #F6F3F2) -->
         <Border Grid.Column="1" Background="#F6F3F2">
-            <ContentControl Content="{Binding CurrentView}" Margin="20" />
+            <ContentControl Content="{Binding CurrentView}" Margin="20"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch"/>
         </Border>
     </Grid>
 </Window>

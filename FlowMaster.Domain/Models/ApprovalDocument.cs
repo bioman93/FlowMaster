@@ -31,7 +31,8 @@ namespace FlowMaster.Domain.Models
         public DateTime CreateDate { get; set; }
         public DateTime? UpdateDate { get; set; }
         public ApprovalStatus Status { get; set; }
-        public string CurrentApproverId { get; set; } // 현재 결재 순서인 사람
+        public string CurrentApproverId { get; set; }   // 현재 결재 순서인 사람 (ID)
+        public string CurrentApproverName { get; set; } // 현재 결재 순서인 사람 (이름, 조회 시 JOIN)
         public string ApprovalId { get; set; }        // ApprovalService API의 결재 ID (APV-xxx)
 
         // ApprovalSystem 동기화 추적
@@ -50,6 +51,23 @@ namespace FlowMaster.Domain.Models
         public string OutputPath { get; set; }      // 산출물 경로
         public string ApproverComment { get; set; } // 결재자 코멘트
         public DateTime? ApprovalTime { get; set; } // 결재/반려 처리 일시
+
+        /// <summary>상태 한글 표시 (DataGrid 바인딩용)</summary>
+        public string StatusDisplay
+        {
+            get
+            {
+                switch (Status)
+                {
+                    case ApprovalStatus.TempSaved: return "임시저장";
+                    case ApprovalStatus.Pending:   return "승인대기";
+                    case ApprovalStatus.Approved:  return "승인완료";
+                    case ApprovalStatus.Rejected:  return "반려";
+                    case ApprovalStatus.Canceled:  return "취소됨";
+                    default: return Status.ToString();
+                }
+            }
+        }
 
         // Navigation Properties
         public List<ApprovalLine> ApprovalLines { get; set; } = new List<ApprovalLine>();
