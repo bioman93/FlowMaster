@@ -31,6 +31,13 @@ namespace FlowMaster.Infrastructure.Repositories
             {
                 conn.Open();
 
+                // WAL 모드: 동시 읽기(다수) + 단일 쓰기 허용 → 다중 PC 환경에서 lock 충돌 대폭 감소
+                conn.Execute("PRAGMA journal_mode=WAL");
+                // WAL 모드에서 권장: 데이터 안전성과 성능의 균형
+                conn.Execute("PRAGMA synchronous=NORMAL");
+                // 읽기 전용 연결이 오래된 WAL 체크포인트를 막지 않도록 설정
+                conn.Execute("PRAGMA wal_autocheckpoint=100");
+
                 // FM_ApprovalDocuments: 결재 문서 (기안)
                 conn.Execute(@"
                     CREATE TABLE IF NOT EXISTS FM_ApprovalDocuments (
