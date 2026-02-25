@@ -91,10 +91,10 @@
                                   SelectionMode="Single" CanUserResizeRows="False"
                                   GridLinesVisibility="Horizontal" HeadersVisibility="Column">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="AD 계정" Binding="{Binding AdAccount}" Width="110"/>
-                                <DataGridTextColumn Header="이름"    Binding="{Binding Name}"      Width="100"/>
-                                <DataGridTextColumn Header="이메일"  Binding="{Binding Email}"     Width="*"/>
-                                <DataGridTextColumn Header="역할"    Binding="{Binding Role}"      Width="85"/>
+                                <DataGridTextColumn Header="AD 계정" Binding="{Binding AdAccount}"    Width="110"/>
+                                <DataGridTextColumn Header="이름"    Binding="{Binding Name}"         Width="100"/>
+                                <DataGridTextColumn Header="이메일"  Binding="{Binding Email}"        Width="*"/>
+                                <DataGridTextColumn Header="그룹"    Binding="{Binding GroupsDisplay}" Width="120"/>
                             </DataGrid.Columns>
                         </DataGrid>
                     </DockPanel>
@@ -168,11 +168,31 @@
                                 <TextBox Text="{Binding FormEmail, UpdateSourceTrigger=PropertyChanged}" Width="150"/>
                             </StackPanel>
 
-                            <!-- 역할 -->
+                            <!-- 그룹 선택 (동적 체크박스) -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <TextBlock Text="그룹" Style="{StaticResource FormLabel}"/>
+                                <ScrollViewer MaxHeight="90" VerticalScrollBarVisibility="Auto" Width="160">
+                                    <ItemsControl ItemsSource="{Binding FormGroupSelections}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <CheckBox Content="{Binding GroupName}"
+                                                          IsChecked="{Binding IsSelected}"
+                                                          Margin="0,0,0,3" VerticalContentAlignment="Center"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </StackPanel>
+
+                            <!-- MPI/GDI 참여자 그룹 -->
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
-                                <TextBlock Text="역할" Style="{StaticResource FormLabel}"/>
-                                <ComboBox ItemsSource="{Binding RoleOptions}"
-                                          SelectedItem="{Binding FormRole}" Width="130"/>
+                                <TextBlock Text="참여자" Style="{StaticResource FormLabel}"/>
+                                <StackPanel>
+                                    <CheckBox Content="MPI" IsChecked="{Binding FormIsMpi}"
+                                              Margin="0,0,0,4" VerticalContentAlignment="Center"/>
+                                    <CheckBox Content="GDI" IsChecked="{Binding FormIsGdi}"
+                                              VerticalContentAlignment="Center"/>
+                                </StackPanel>
                             </StackPanel>
 
                             <!-- 버튼 -->
@@ -218,9 +238,8 @@
                                       SelectionMode="Single" CanUserResizeRows="False"
                                       GridLinesVisibility="Horizontal" HeadersVisibility="Column">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="그룹명"   Binding="{Binding GroupName}"   Width="130"/>
-                                    <DataGridTextColumn Header="설명"     Binding="{Binding Description}" Width="*"/>
-                                    <DataGridTextColumn Header="기본역할" Binding="{Binding Role}"        Width="75"/>
+                                    <DataGridTextColumn Header="그룹명" Binding="{Binding DisplayName}"  Width="150"/>
+                                    <DataGridTextColumn Header="설명"   Binding="{Binding Description}"  Width="*"/>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </DockPanel>
@@ -235,16 +254,11 @@
                                     <TextBlock Text="그룹명" Style="{StaticResource FormLabel}"/>
                                     <TextBox Text="{Binding FormGroupName, UpdateSourceTrigger=PropertyChanged}" Width="145"/>
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                     <TextBlock Text="설명" Style="{StaticResource FormLabel}"/>
                                     <TextBox Text="{Binding FormGroupDescription, UpdateSourceTrigger=PropertyChanged}"
                                              Width="145" Height="40" TextWrapping="Wrap" AcceptsReturn="True"
                                              VerticalScrollBarVisibility="Auto"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                    <TextBlock Text="기본역할" Style="{StaticResource FormLabel}"/>
-                                    <ComboBox ItemsSource="{Binding RoleOptions}"
-                                              SelectedItem="{Binding FormGroupRole}" Width="100"/>
                                 </StackPanel>
 
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
@@ -253,6 +267,7 @@
                                     <Button Content="저장" Command="{Binding SaveGroupCommand}"
                                             Style="{StaticResource PrimaryButton}"/>
                                     <Button Content="삭제" Command="{Binding DeleteGroupCommand}"
+                                            IsEnabled="{Binding CanDeleteSelectedGroup}"
                                             Style="{StaticResource DangerButton}"/>
                                 </StackPanel>
 
@@ -273,7 +288,7 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
-                        <!-- 현재 멤버 -->
+                        <!-- 현재 멤버 (다중 선택 가능) -->
                         <DockPanel Grid.Column="0">
                             <TextBlock DockPanel.Dock="Top" Style="{StaticResource HeaderText}">
                                 <TextBlock.Text>
@@ -282,27 +297,29 @@
                                     </MultiBinding>
                                 </TextBlock.Text>
                             </TextBlock>
-                            <Button DockPanel.Dock="Bottom" Content="제거 →"
-                                    Command="{Binding RemoveGroupMemberCommand}"
-                                    HorizontalAlignment="Right" Margin="0,4,0,0"
-                                    Style="{StaticResource DangerButton}"/>
-                            <ListBox ItemsSource="{Binding GroupMembers}"
-                                     SelectedItem="{Binding SelectedMemberToRemove}"
+                            <ListBox x:Name="groupMembersList"
+                                     ItemsSource="{Binding GroupMembers}"
+                                     SelectionMode="Extended"
+                                     SelectionChanged="GroupMembersList_SelectionChanged"
                                      DisplayMemberPath="Name"/>
                         </DockPanel>
 
-                        <!-- 추가 버튼 -->
+                        <!-- 추가 / 제거 버튼 -->
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0">
                             <Button Content="← 추가" Command="{Binding AddGroupMemberCommand}"
-                                    Padding="8,6" Style="{StaticResource PrimaryButton}"/>
+                                    Padding="8,6" Style="{StaticResource PrimaryButton}" Margin="4,0,4,4"/>
+                            <Button Content="제거 →" Command="{Binding RemoveGroupMemberCommand}"
+                                    Padding="8,6" Style="{StaticResource DangerButton}" Margin="4,0,4,0"/>
                         </StackPanel>
 
-                        <!-- 추가 가능 사용자 -->
+                        <!-- 추가 가능 사용자 (다중 선택 가능) -->
                         <DockPanel Grid.Column="2">
                             <TextBlock DockPanel.Dock="Top" Text="추가 가능한 사용자"
                                        Style="{StaticResource HeaderText}"/>
-                            <ListBox ItemsSource="{Binding NonGroupMembers}"
-                                     SelectedItem="{Binding SelectedMemberToAdd}"
+                            <ListBox x:Name="nonGroupMembersList"
+                                     ItemsSource="{Binding NonGroupMembers}"
+                                     SelectionMode="Extended"
+                                     SelectionChanged="NonGroupMembersList_SelectionChanged"
                                      DisplayMemberPath="Name"/>
                         </DockPanel>
                     </Grid>

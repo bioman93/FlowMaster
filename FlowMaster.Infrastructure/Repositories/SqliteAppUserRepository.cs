@@ -37,7 +37,7 @@ namespace FlowMaster.Infrastructure.Repositories
             public long   GroupId     { get; set; }
             public string GroupName   { get; set; }
             public string Description { get; set; }
-            public long   Role        { get; set; }
+            public long   IsDefault   { get; set; }
             public string CreatedAt   { get; set; }
         }
 
@@ -69,9 +69,31 @@ namespace FlowMaster.Infrastructure.Repositories
                         GroupId     INTEGER PRIMARY KEY AUTOINCREMENT,
                         GroupName   TEXT NOT NULL UNIQUE,
                         Description TEXT,
-                        Role        INTEGER NOT NULL DEFAULT 0,
+                        IsDefault   INTEGER NOT NULL DEFAULT 0,
                         CreatedAt   TEXT NOT NULL
                     )");
+
+                // 기존 DB 마이그레이션: Role → IsDefault 컬럼 교체
+                try { conn.Execute("ALTER TABLE FM_AppGroups ADD COLUMN IsDefault INTEGER NOT NULL DEFAULT 0"); }
+                catch { /* 이미 존재 */ }
+
+                // 기본 그룹 자동 시딩
+                var defaultGroups = new[]
+                {
+                    ("GeneralUser", "일반 사용자"),
+                    ("Approver",    "결재자"),
+                    ("Admin",       "시스템 관리자")
+                };
+                foreach (var (name, desc) in defaultGroups)
+                {
+                    conn.Execute(
+                        @"INSERT OR IGNORE INTO FM_AppGroups (GroupName, Description, IsDefault, CreatedAt)
+                          VALUES (@Name, @Desc, 1, datetime('now'))",
+                        new { Name = name, Desc = desc });
+                    conn.Execute(
+                        "UPDATE FM_AppGroups SET IsDefault = 1 WHERE GroupName = @Name",
+                        new { Name = name });
+                }
 
                 conn.Execute(@"
                     CREATE TABLE IF NOT EXISTS FM_AppGroupMembers (
@@ -197,7 +219,7 @@ namespace FlowMaster.Infrastructure.Repositories
             {
                 conn.Open();
                 var rows = await conn.QueryAsync<GroupRow>(
-                    "SELECT GroupId, GroupName, Description, Role, CreatedAt FROM FM_AppGroups ORDER BY GroupName");
+                    "SELECT GroupId, GroupName, Description, IsDefault, CreatedAt FROM FM_AppGroups ORDER BY IsDefault DESC, GroupName");
                 return rows.Select(MapGroup).ToList();
             }
         }
@@ -208,7 +230,7 @@ namespace FlowMaster.Infrastructure.Repositories
             {
                 conn.Open();
                 var groupRow = await conn.QueryFirstOrDefaultAsync<GroupRow>(
-                    "SELECT GroupId, GroupName, Description, Role, CreatedAt FROM FM_AppGroups WHERE GroupId = @GroupId",
+                    "SELECT GroupId, GroupName, Description, IsDefault, CreatedAt FROM FM_AppGroups WHERE GroupId = @GroupId",
                     new { GroupId = groupId });
                 if (groupRow == null) return null;
 
@@ -231,14 +253,14 @@ namespace FlowMaster.Infrastructure.Repositories
             {
                 conn.Open();
                 return await conn.QuerySingleAsync<int>(
-                    @"INSERT INTO FM_AppGroups (GroupName, Description, Role, CreatedAt)
-                      VALUES (@GroupName, @Description, @Role, @CreatedAt);
+                    @"INSERT INTO FM_AppGroups (GroupName, Description, IsDefault, CreatedAt)
+                      VALUES (@GroupName, @Description, @IsDefault, @CreatedAt);
                       SELECT last_insert_rowid();",
                     new
                     {
                         GroupName   = group.GroupName,
                         Description = group.Description,
-                        Role        = (int)group.Role,
+                        IsDefault   = group.IsDefault ? 1 : 0,
                         CreatedAt   = DateTime.UtcNow.ToString("o")
                     });
             }
@@ -251,14 +273,13 @@ namespace FlowMaster.Infrastructure.Repositories
                 conn.Open();
                 await conn.ExecuteAsync(
                     @"UPDATE FM_AppGroups
-                      SET GroupName = @GroupName, Description = @Description, Role = @Role
-                      WHERE GroupId = @GroupId",
+                      SET GroupName = @GroupName, Description = @Description
+                      WHERE GroupId = @GroupId AND IsDefault = 0",
                     new
                     {
                         GroupId     = group.GroupId,
                         GroupName   = group.GroupName,
-                        Description = group.Description,
-                        Role        = (int)group.Role
+                        Description = group.Description
                     });
             }
         }
@@ -268,6 +289,12 @@ namespace FlowMaster.Infrastructure.Repositories
             using (var conn = new SqliteConnection(_connectionString))
             {
                 conn.Open();
+                var isDefault = await conn.ExecuteScalarAsync<long>(
+                    "SELECT IsDefault FROM FM_AppGroups WHERE GroupId = @GroupId",
+                    new { GroupId = groupId });
+                if (isDefault == 1)
+                    throw new InvalidOperationException("기본 그룹은 삭제할 수 없습니다.");
+
                 await conn.ExecuteAsync(
                     "DELETE FROM FM_AppGroupMembers WHERE GroupId = @GroupId",
                     new { GroupId = groupId });
@@ -316,7 +343,7 @@ namespace FlowMaster.Infrastructure.Repositories
             GroupId     = (int)r.GroupId,
             GroupName   = r.GroupName,
             Description = r.Description,
-            Role        = (UserRole)(int)r.Role,
+            IsDefault   = r.IsDefault == 1,
             CreatedAt   = DateTime.TryParse(r.CreatedAt, out var dt) ? dt : DateTime.MinValue
         };
     }

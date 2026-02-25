@@ -8,6 +8,7 @@ using System.Windows;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using FlowMaster.Domain.Interfaces;
 using FlowMaster.Domain.Models;
 using FlowMaster.Infrastructure.Repositories;
 using Microsoft.Win32;
@@ -17,7 +18,7 @@ namespace FlowMaster.Desktop.ViewModels
     public class TypeSelectionViewModel : ObservableObject
     {
         private readonly ExternalDbRepository _externalDb;
-        private readonly SqliteApprovalRepository _internalDb;
+        private readonly IApprovalRepository _internalDb;
         private readonly Action<string, ApprovalDocument> _onTypeSelected;
         private readonly Action _onCancel;
 
@@ -92,7 +93,7 @@ namespace FlowMaster.Desktop.ViewModels
 
         public TypeSelectionViewModel(
             ExternalDbRepository externalDb,
-            SqliteApprovalRepository internalDb,
+            IApprovalRepository internalDb,
             Action<string, ApprovalDocument> onTypeSelected,
             Action onCancel)
         {

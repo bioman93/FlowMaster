@@ -27,6 +27,20 @@ namespace FlowMaster.Infrastructure.Services
 
         public async Task<List<User>> GetAllUsersAsync()
         {
+            // 캐시 무효화 후 재조회는 GetAllUsersAsync 호출 흐름 유지
+            return await GetAllUsersInternalAsync();
+        }
+
+        public async Task<List<User>> GetAllUsersIncludeDisabledAsync()
+        {
+            // 관리자 화면용: 항상 localFallback(ApiAppUserRepository)에서 조회
+            if (_localFallback != null)
+                return await _localFallback.GetAllUsersIncludeDisabledAsync();
+            return await GetAllUsersInternalAsync();
+        }
+
+        private async Task<List<User>> GetAllUsersInternalAsync()
+        {
             if (_cachedUsers != null) return _cachedUsers;
 
             // Emulator 연결 시도 (IsEmulatorAvailable은 GetUsersAsync 호출 후 설정됨)

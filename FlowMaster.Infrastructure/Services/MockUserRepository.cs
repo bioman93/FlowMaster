@@ -32,6 +32,8 @@ namespace FlowMaster.Infrastructure.Services
             return Task.FromResult(user);
         }
 
+        public Task<List<User>> GetAllUsersIncludeDisabledAsync() => GetAllUsersAsync();
+
         public Task<List<User>> GetUsersByRoleAsync(UserRole role)
         {
             var results = _users.Where(u => u.Role == role).ToList();

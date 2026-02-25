@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using FlowMaster.Desktop.ViewModels;
@@ -50,6 +52,20 @@ namespace FlowMaster.Desktop.Views
 
                 lb.SelectedItem = null; // 선택 상태 초기화 (재선택 가능하도록)
             }
+        }
+
+        /// <summary>현재 멤버 목록 다중 선택 → ViewModel의 SelectedMembersToRemove 갱신.</summary>
+        private void GroupMembersList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is ListBox lb && DataContext is AdminViewModel vm)
+                vm.SelectedMembersToRemove = lb.SelectedItems.Cast<User>().ToList();
+        }
+
+        /// <summary>추가 가능 사용자 목록 다중 선택 → ViewModel의 SelectedMembersToAdd 갱신.</summary>
+        private void NonGroupMembersList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is ListBox lb && DataContext is AdminViewModel vm)
+                vm.SelectedMembersToAdd = lb.SelectedItems.Cast<User>().ToList();
         }
     }
 }

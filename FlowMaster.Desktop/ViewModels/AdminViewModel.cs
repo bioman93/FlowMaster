@@ -114,19 +114,35 @@ namespace FlowMaster.Desktop.ViewModels
             set => SetProperty(ref _formEmail, value);
         }
 
-        private UserRole _formRole = UserRole.GeneralUser;
-        public UserRole FormRole
+        // 사용자 폼 - 그룹 다중 선택 체크박스 목록
+        private ObservableCollection<GroupSelection> _formGroupSelections = new ObservableCollection<GroupSelection>();
+        public ObservableCollection<GroupSelection> FormGroupSelections
         {
-            get => _formRole;
-            set => SetProperty(ref _formRole, value);
+            get => _formGroupSelections;
+            set => SetProperty(ref _formGroupSelections, value);
         }
 
-        public UserRole[] RoleOptions { get; } =
+        // 사용자 폼 수정 시 "변경 전" 그룹 목록 (저장 시 diff 계산용)
+        private List<string> _originalUserGroups = new List<string>();
+
+        // MPI/GDI 참여자 그룹 체크박스
+        private bool _formIsMpi;
+        public bool FormIsMpi
         {
-            UserRole.GeneralUser,
-            UserRole.Approver,
-            UserRole.Admin
-        };
+            get => _formIsMpi;
+            set => SetProperty(ref _formIsMpi, value);
+        }
+
+        private bool _formIsGdi;
+        public bool FormIsGdi
+        {
+            get => _formIsGdi;
+            set => SetProperty(ref _formIsGdi, value);
+        }
+
+        // 참여자 그룹 멤버 캐시 (사용자 폼 체크박스 상태 판별용)
+        private List<User> _mpiMembers = new List<User>();
+        private List<User> _gdiMembers = new List<User>();
 
         private bool _isUserEditMode;
         public bool IsUserEditMode
@@ -169,13 +185,17 @@ namespace FlowMaster.Desktop.ViewModels
                     {
                         FormGroupName        = value.GroupName;
                         FormGroupDescription = value.Description;
-                        FormGroupRole        = value.Role;
                         IsGroupEditMode      = true;
                     }
+                    OnPropertyChanged(nameof(CanDeleteSelectedGroup));
                     LoadGroupMembersAsync(value);
                 }
             }
         }
+
+        /// <summary>선택된 그룹이 기본 그룹이 아닐 때만 삭제 버튼 활성화.</summary>
+        public bool CanDeleteSelectedGroup =>
+            SelectedGroup != null && !SelectedGroup.IsDefault;
 
         private ObservableCollection<User> _groupMembers = new ObservableCollection<User>();
         public ObservableCollection<User> GroupMembers
@@ -191,19 +211,9 @@ namespace FlowMaster.Desktop.ViewModels
             set => SetProperty(ref _nonGroupMembers, value);
         }
 
-        private User _selectedMemberToAdd;
-        public User SelectedMemberToAdd
-        {
-            get => _selectedMemberToAdd;
-            set => SetProperty(ref _selectedMemberToAdd, value);
-        }
-
-        private User _selectedMemberToRemove;
-        public User SelectedMemberToRemove
-        {
-            get => _selectedMemberToRemove;
-            set => SetProperty(ref _selectedMemberToRemove, value);
-        }
+        // 복수 선택 (코드-비하인드의 SelectionChanged에서 갱신)
+        public List<User> SelectedMembersToAdd    { get; set; } = new List<User>();
+        public List<User> SelectedMembersToRemove { get; set; } = new List<User>();
 
         // 그룹 입력 폼
         private string _formGroupName;
@@ -218,13 +228,6 @@ namespace FlowMaster.Desktop.ViewModels
         {
             get => _formGroupDescription;
             set => SetProperty(ref _formGroupDescription, value);
-        }
-
-        private UserRole _formGroupRole = UserRole.GeneralUser;
-        public UserRole FormGroupRole
-        {
-            get => _formGroupRole;
-            set => SetProperty(ref _formGroupRole, value);
         }
 
         private bool _isGroupEditMode;
@@ -358,10 +361,10 @@ namespace FlowMaster.Desktop.ViewModels
 
         // ── Constructor ───────────────────────────────────────────────
 
-        private readonly SqliteApprovalRepository _approvalRepo;
+        private readonly IApprovalRepository _approvalRepo;
 
         public AdminViewModel(IUserRepository userRepo, IAppGroupRepository groupRepo,
-            AdAuthService adService, SqliteApprovalRepository approvalRepo = null)
+            AdAuthService adService, IApprovalRepository approvalRepo = null)
         {
             _userRepo     = userRepo;
             _groupRepo    = groupRepo;
@@ -391,9 +394,10 @@ namespace FlowMaster.Desktop.ViewModels
 
         public async Task InitializeAsync()
         {
+            await LoadGroupsAsync();   // 먼저 로드해야 RefreshGroupSelections 가능
             await LoadUsersAsync();
-            await LoadGroupsAsync();
             await LoadParticipantGroupMembersAsync();
+            await LoadParticipantGroupCacheAsync();
             UpdateFirstRunState();
         }
 
@@ -457,7 +461,6 @@ namespace FlowMaster.Desktop.ViewModels
 
             FormDisplayName = user.Name;
             FormEmail       = user.Email;
-            FormRole        = user.Role;
 
             ClearAdSearchResults();
             UserStatusMessage = $"선택됨: {user.Name} ({user.AdAccount})";
@@ -477,13 +480,7 @@ namespace FlowMaster.Desktop.ViewModels
         {
             try
             {
-                // 관리자 화면은 비활성 사용자도 표시 (SqliteAppUserRepository 직접 캐스팅)
-                List<User> list;
-                if (_userRepo is SqliteAppUserRepository sqliteRepo)
-                    list = await sqliteRepo.GetAllUsersIncludeDisabledAsync();
-                else
-                    list = await _userRepo.GetAllUsersAsync();
-
+                var list = await _userRepo.GetAllUsersIncludeDisabledAsync();
                 Users = new ObservableCollection<User>(list);
             }
             catch (Exception ex)
@@ -509,7 +506,6 @@ namespace FlowMaster.Desktop.ViewModels
                 {
                     FormDisplayName = adUser.Name;
                     FormEmail       = adUser.Email;
-                    FormRole        = adUser.Role;
                     UserStatusMessage = $"AD 조회 성공: {adUser.Name}";
                 }
                 else
@@ -544,8 +540,7 @@ namespace FlowMaster.Desktop.ViewModels
                     UserId    = FormAdAccount.Trim(),
                     AdAccount = FormAdAccount.Trim(),
                     Name      = FormDisplayName.Trim(),
-                    Email     = FormEmail?.Trim(),
-                    Role      = FormRole
+                    Email     = FormEmail?.Trim()
                 };
 
                 if (IsUserEditMode)
@@ -559,7 +554,44 @@ namespace FlowMaster.Desktop.ViewModels
                     UserStatusMessage = $"'{user.Name}' 추가 완료";
                 }
 
+                // 앱 그룹 멤버십 동기화 (체크박스 선택 기준)
+                // 아무 그룹도 선택하지 않은 경우 GeneralUser를 기본으로 적용
+                bool anySelected = FormGroupSelections.Any(s => s.IsSelected);
+                foreach (var sel in FormGroupSelections)
+                {
+                    bool effectiveSelected = sel.IsSelected ||
+                        (!anySelected && string.Equals(sel.GroupName, "GeneralUser", StringComparison.OrdinalIgnoreCase));
+                    var wasIn = _originalUserGroups.Any(g =>
+                        string.Equals(g, sel.GroupName, StringComparison.OrdinalIgnoreCase));
+                    if (effectiveSelected && !wasIn)
+                        await _groupRepo.AddGroupMemberAsync(sel.GroupId, user.AdAccount);
+                    else if (!effectiveSelected && wasIn)
+                        await _groupRepo.RemoveGroupMemberAsync(sel.GroupId, user.AdAccount);
+                }
+
+                // MPI/GDI 참여자 그룹 멤버십 동기화
+                if (_approvalRepo != null)
+                {
+                    var wasMpi = _mpiMembers.Any(m =>
+                        string.Equals(m.UserId, user.AdAccount, StringComparison.OrdinalIgnoreCase));
+                    var wasGdi = _gdiMembers.Any(m =>
+                        string.Equals(m.UserId, user.AdAccount, StringComparison.OrdinalIgnoreCase));
+
+                    if (FormIsMpi && !wasMpi)
+                        await _approvalRepo.AddParticipantGroupMemberAsync("MPI", user);
+                    else if (!FormIsMpi && wasMpi)
+                        await _approvalRepo.RemoveParticipantGroupMemberAsync("MPI", user.AdAccount);
+
+                    if (FormIsGdi && !wasGdi)
+                        await _approvalRepo.AddParticipantGroupMemberAsync("GDI", user);
+                    else if (!FormIsGdi && wasGdi)
+                        await _approvalRepo.RemoveParticipantGroupMemberAsync("GDI", user.AdAccount);
+
+                    await LoadParticipantGroupCacheAsync();
+                }
+
                 ClearUserForm();
+                await LoadGroupsAsync(); // 그룹 멤버 카운트 갱신
                 await LoadUsersAsync();
                 UpdateFirstRunState();
             }
@@ -602,8 +634,17 @@ namespace FlowMaster.Desktop.ViewModels
             FormAdAccount   = user.AdAccount;
             FormDisplayName = user.Name;
             FormEmail       = user.Email;
-            FormRole        = user.Role;
             IsUserEditMode  = true;
+
+            // 현재 소속 그룹 체크박스 반영 + 변경 전 상태 기록
+            _originalUserGroups = new List<string>(user.Groups ?? new List<string>());
+            RefreshGroupSelections(_originalUserGroups);
+
+            // MPI/GDI 현재 멤버십 반영
+            FormIsMpi = _mpiMembers.Any(m =>
+                string.Equals(m.UserId, user.AdAccount, StringComparison.OrdinalIgnoreCase));
+            FormIsGdi = _gdiMembers.Any(m =>
+                string.Equals(m.UserId, user.AdAccount, StringComparison.OrdinalIgnoreCase));
         }
 
         private void ClearUserForm()
@@ -614,9 +655,12 @@ namespace FlowMaster.Desktop.ViewModels
             OnPropertyChanged(nameof(FormAdAccount));
             FormDisplayName = string.Empty;
             FormEmail       = string.Empty;
-            FormRole        = UserRole.GeneralUser;
+            FormIsMpi       = false;
+            FormIsGdi       = false;
             IsUserEditMode  = false;
             SelectedUser    = null;
+            _originalUserGroups = new List<string>();
+            RefreshGroupSelections();
         }
 
         // ── 그룹 관리 ─────────────────────────────────────────────────
@@ -627,6 +671,10 @@ namespace FlowMaster.Desktop.ViewModels
             {
                 var list = await _groupRepo.GetAllGroupsAsync();
                 Groups = new ObservableCollection<AppGroup>(list);
+                // 사용자 폼 그룹 체크박스 목록도 갱신 (선택 상태 유지)
+                var selectedNames = FormGroupSelections
+                    .Where(s => s.IsSelected).Select(s => s.GroupName).ToList();
+                RefreshGroupSelections(selectedNames);
             }
             catch (Exception ex)
             {
@@ -675,8 +723,7 @@ namespace FlowMaster.Desktop.ViewModels
                 {
                     GroupId     = SelectedGroup?.GroupId ?? 0,
                     GroupName   = FormGroupName.Trim(),
-                    Description = FormGroupDescription?.Trim(),
-                    Role        = FormGroupRole
+                    Description = FormGroupDescription?.Trim()
                 };
 
                 if (IsGroupEditMode && SelectedGroup != null)
@@ -708,6 +755,12 @@ namespace FlowMaster.Desktop.ViewModels
                 return;
             }
 
+            if (SelectedGroup.IsDefault)
+            {
+                GroupStatusMessage = $"'{SelectedGroup.GroupName}'은(는) 기본 그룹으로 삭제할 수 없습니다.";
+                return;
+            }
+
             var result = MessageBox.Show(
                 $"'{SelectedGroup.GroupName}' 그룹을 삭제하시겠습니까?\n멤버십 정보도 함께 삭제됩니다.",
                 "그룹 삭제", MessageBoxButton.YesNo, MessageBoxImage.Warning);
@@ -729,15 +782,16 @@ namespace FlowMaster.Desktop.ViewModels
 
         private async Task AddGroupMemberAsync()
         {
-            if (SelectedGroup == null || SelectedMemberToAdd == null)
+            if (SelectedGroup == null || SelectedMembersToAdd.Count == 0)
             {
                 GroupStatusMessage = "그룹과 추가할 사용자를 선택하세요.";
                 return;
             }
             try
             {
-                await _groupRepo.AddGroupMemberAsync(SelectedGroup.GroupId, SelectedMemberToAdd.AdAccount);
-                GroupStatusMessage = $"'{SelectedMemberToAdd.Name}' 그룹에 추가됨";
+                foreach (var member in SelectedMembersToAdd)
+                    await _groupRepo.AddGroupMemberAsync(SelectedGroup.GroupId, member.AdAccount);
+                GroupStatusMessage = $"{SelectedMembersToAdd.Count}명 그룹에 추가됨";
                 LoadGroupMembersAsync(SelectedGroup);
             }
             catch (Exception ex)
@@ -749,20 +803,22 @@ namespace FlowMaster.Desktop.ViewModels
 
         private async Task RemoveGroupMemberAsync()
         {
-            if (SelectedGroup == null || SelectedMemberToRemove == null)
+            if (SelectedGroup == null || SelectedMembersToRemove.Count == 0)
             {
                 GroupStatusMessage = "그룹과 제거할 멤버를 선택하세요.";
                 return;
             }
+            var names = string.Join(", ", SelectedMembersToRemove.Select(m => m.Name));
             var result = MessageBox.Show(
-                $"'{SelectedMemberToRemove.Name}'을(를) '{SelectedGroup.GroupName}' 그룹에서 제거하시겠습니까?",
+                $"'{names}'을(를) '{SelectedGroup.GroupName}' 그룹에서 제거하시겠습니까?",
                 "멤버 제거", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes) return;
 
             try
             {
-                await _groupRepo.RemoveGroupMemberAsync(SelectedGroup.GroupId, SelectedMemberToRemove.AdAccount);
-                GroupStatusMessage = $"'{SelectedMemberToRemove.Name}' 그룹에서 제거됨";
+                foreach (var member in SelectedMembersToRemove)
+                    await _groupRepo.RemoveGroupMemberAsync(SelectedGroup.GroupId, member.AdAccount);
+                GroupStatusMessage = $"{SelectedMembersToRemove.Count}명 그룹에서 제거됨";
                 LoadGroupMembersAsync(SelectedGroup);
             }
             catch (Exception ex)
@@ -776,12 +832,29 @@ namespace FlowMaster.Desktop.ViewModels
         {
             FormGroupName        = string.Empty;
             FormGroupDescription = string.Empty;
-            FormGroupRole        = UserRole.GeneralUser;
             IsGroupEditMode      = false;
             SelectedGroup        = null;
         }
 
         // ── 참여자 그룹 관리 ─────────────────────────────────────────
+
+        /// <summary>
+        /// MPI/GDI 두 그룹 멤버를 모두 캐시에 로드합니다.
+        /// 사용자 폼에서 체크박스 초기값 판별에 사용됩니다.
+        /// </summary>
+        private async Task LoadParticipantGroupCacheAsync()
+        {
+            if (_approvalRepo == null) return;
+            try
+            {
+                _mpiMembers = await _approvalRepo.GetParticipantGroupAsync("MPI");
+                _gdiMembers = await _approvalRepo.GetParticipantGroupAsync("GDI");
+            }
+            catch (Exception ex)
+            {
+                AppLogger.Error("[AdminViewModel] 참여자 그룹 캐시 로드 실패", ex);
+            }
+        }
 
         private async Task LoadParticipantGroupMembersAsync()
         {
@@ -846,5 +919,44 @@ namespace FlowMaster.Desktop.ViewModels
             }
         }
 
+        // ── 그룹 체크박스 바인딩 헬퍼 ────────────────────────────────
+
+        /// <summary>
+        /// 현재 Groups 목록을 기반으로 FormGroupSelections를 재구성합니다.
+        /// selectedGroupNames가 null이면 모두 미선택으로 초기화합니다.
+        /// </summary>
+        private void RefreshGroupSelections(IEnumerable<string> selectedGroupNames = null)
+        {
+            var selected = new HashSet<string>(
+                selectedGroupNames ?? Enumerable.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+
+            FormGroupSelections = new ObservableCollection<GroupSelection>(
+                Groups.Select(g => new GroupSelection(g, selected.Contains(g.GroupName))));
+        }
+
+    }
+
+    /// <summary>
+    /// 사용자 폼에서 그룹 체크박스 바인딩에 사용되는 헬퍼 클래스.
+    /// </summary>
+    public class GroupSelection : ObservableObject
+    {
+        public int    GroupId   { get; }
+        public string GroupName { get; }
+
+        private bool _isSelected;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set => SetProperty(ref _isSelected, value);
+        }
+
+        public GroupSelection(AppGroup group, bool isSelected)
+        {
+            GroupId    = group.GroupId;
+            GroupName  = group.GroupName;
+            _isSelected = isSelected;
+        }
     }
 }

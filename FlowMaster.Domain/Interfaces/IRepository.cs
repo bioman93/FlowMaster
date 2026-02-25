@@ -7,6 +7,8 @@ namespace FlowMaster.Domain.Interfaces
     public interface IUserRepository
     {
         Task<List<User>> GetAllUsersAsync();
+        /// <summary>비활성 사용자 포함 전체 조회 (관리자 화면용).</summary>
+        Task<List<User>> GetAllUsersIncludeDisabledAsync();
         Task<User> GetUserByAdAccountAsync(string adAccount);
         Task<List<User>> GetUsersByRoleAsync(UserRole role);
         Task AddUserAsync(User user);
@@ -28,6 +30,9 @@ namespace FlowMaster.Domain.Interfaces
     public interface IApprovalRepository
     {
         Task<int> CreateDocumentAsync(ApprovalDocument doc);
+        Task UpdateDocumentAsync(ApprovalDocument doc);
+        Task SaveChecklistItemsAsync(int docId, List<ChecklistItem> items);
+        Task<List<ChecklistItem>> GetChecklistItemsAsync(int docId);
         Task UpdateDocumentStatusAsync(int docId, ApprovalStatus status);
         /// <summary>
         /// ApprovalSystem에서 발급된 결재 ID를 FM 문서에 연결합니다.

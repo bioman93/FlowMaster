@@ -126,50 +126,24 @@ namespace FlowMaster.Desktop.ViewModels
         }
 
         /// <summary>
-        /// Phase 1: 로컬 SQLite만 빠르게 조회 → 즉시 화면 결정 (Emulator/AD 타임아웃 없음)
+        /// Phase 1: 즉시 대시보드로 이동 (API 기반으로 로컬 즉시 체크 불가)
         /// Phase 2: 전체 사용자 데이터 로드 (Emulator/AD, 백그라운드)
-        /// Phase 3: Emulator 모드에서 Phase 1 판단 수정 (필요 시)
+        /// Phase 3: Emulator 미실행 + 등록 사용자 없으면 시스템 관리 화면으로
         /// </summary>
         private async void StartupAsync()
         {
-            // ─── Phase 1: 로컬 SQLite 즉시 체크 ───────────────────────────────────
-            bool navigatedToAdmin = false;
-            var localRepo = _serviceProvider.GetService<SqliteAppUserRepository>();
-            if (localRepo != null)
-            {
-                try
-                {
-                    var localUsers = await localRepo.GetAllUsersAsync();
-                    bool hasLocalUsers = localUsers?.Any() == true;
+            // Phase 1: 즉시 대시보드 표시
+            NavigateToDashboard();
 
-                    if (!hasLocalUsers)
-                    {
-                        // 로컬에 등록된 사용자 없음 → 즉시 시스템 관리 화면으로
-                        HasNoAdmin = true;
-                        AppLogger.Info("[MainViewModel] 로컬 사용자 없음 → 즉시 시스템 관리 화면으로 이동");
-                        NavigateToAdmin();
-                        navigatedToAdmin = true;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    AppLogger.Warn($"[MainViewModel] Phase 1 로컬 체크 실패: {ex.Message}");
-                }
-            }
-
-            if (!navigatedToAdmin)
-                NavigateToDashboard();
-
-            // ─── Phase 2: 전체 사용자 데이터 로드 (백그라운드) ────────────────────
+            // Phase 2: 전체 사용자 데이터 로드 (Emulator/AD, 백그라운드)
             await LoadUsersDataAsync();
 
-            // ─── Phase 3: Emulator 모드에서 초기 판단 수정 ────────────────────────
-            // Phase 1에서 "로컬 사용자 없음 → Admin"으로 이동했지만,
-            // Emulator가 실행 중이고 사용자가 있다면 Dashboard로 전환
-            if (navigatedToAdmin && _authService.IsEmulatorAvailable && AvailableUsers?.Any() == true)
+            // Phase 3: Emulator 미실행이고 등록 사용자가 없으면 → 시스템 관리 화면
+            if (!_authService.IsEmulatorAvailable && (AvailableUsers == null || !AvailableUsers.Any()))
             {
-                AppLogger.Info("[MainViewModel] Emulator 사용자 확인됨 → 대시보드로 전환");
-                NavigateToDashboard();
+                HasNoAdmin = true;
+                AppLogger.Info("[MainViewModel] 등록 사용자 없음 → 시스템 관리 화면으로 이동");
+                NavigateToAdmin();
             }
         }
 
@@ -271,7 +245,7 @@ namespace FlowMaster.Desktop.ViewModels
             if (doc.TableType == "BA1" || doc.TableType == "BA2")
             {
                 Title = $"FlowMaster - {doc.TableType} 테스트 입력";
-                var internalDb = _serviceProvider.GetRequiredService<SqliteApprovalRepository>();
+                var internalDb = _serviceProvider.GetRequiredService<IApprovalRepository>();
                 var apiClient = _serviceProvider.GetRequiredService<ApprovalApiClient>();
                 var vm = new TestInputViewModel(_externalDb, internalDb, apiClient, NavigateToDashboard);
                 await vm.InitializeExistingDocumentAsync(doc.DocId, CurrentUser, AvailableUsers);
@@ -313,7 +287,7 @@ namespace FlowMaster.Desktop.ViewModels
         {
             _currentDashboardVm?.StopPolling(); // 대시보드 이탈 시 폴링 중지
             Title = "FlowMaster - 테스트 결과 입력";
-            var internalDbForType = _serviceProvider.GetRequiredService<SqliteApprovalRepository>();
+            var internalDbForType = _serviceProvider.GetRequiredService<IApprovalRepository>();
             var vm = new TypeSelectionViewModel(
                 _externalDb,
                 internalDbForType,
@@ -327,7 +301,7 @@ namespace FlowMaster.Desktop.ViewModels
         {
             int seq = ++_navSeq;
             Title = $"FlowMaster - {tableType} 테스트 입력";
-            var internalDb = _serviceProvider.GetRequiredService<SqliteApprovalRepository>();
+            var internalDb = _serviceProvider.GetRequiredService<IApprovalRepository>();
             var apiClient = _serviceProvider.GetRequiredService<ApprovalApiClient>();
             var vm = new TestInputViewModel(_externalDb, internalDb, apiClient, NavigateToDashboard);
             await vm.InitializeNewDocumentAsync(tableType, cloneSource, CurrentUser, AvailableUsers);

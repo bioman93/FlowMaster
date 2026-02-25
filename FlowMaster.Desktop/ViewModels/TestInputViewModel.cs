@@ -9,6 +9,7 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FlowMaster.Domain.DTOs;
+using FlowMaster.Domain.Interfaces;
 using FlowMaster.Domain.Models;
 using FlowMaster.Infrastructure.Repositories;
 using FlowMaster.Infrastructure.Services;
@@ -18,7 +19,7 @@ namespace FlowMaster.Desktop.ViewModels
     public class TestInputViewModel : ObservableObject
     {
         private readonly ExternalDbRepository _externalDb;
-        private readonly SqliteApprovalRepository _internalDb;
+        private readonly IApprovalRepository _internalDb;
         private readonly ApprovalApiClient _apiClient;
         private readonly Action _onGoBack;
         private User _currentUser;
@@ -257,7 +258,7 @@ namespace FlowMaster.Desktop.ViewModels
 
         #endregion
 
-        public TestInputViewModel(ExternalDbRepository externalDb, SqliteApprovalRepository internalDb, ApprovalApiClient apiClient, Action onGoBack)
+        public TestInputViewModel(ExternalDbRepository externalDb, IApprovalRepository internalDb, ApprovalApiClient apiClient, Action onGoBack)
         {
             _externalDb = externalDb;
             _internalDb = internalDb;

@@ -61,12 +61,16 @@ namespace FlowMaster.Tests
             public Task<List<User>> GetParticipantGroupAsync(string groupName) => Task.FromResult(new List<User>());
             public Task AddParticipantGroupMemberAsync(string groupName, User user) => Task.CompletedTask;
             public Task RemoveParticipantGroupMemberAsync(string groupName, string userId) => Task.CompletedTask;
+            public Task UpdateDocumentAsync(ApprovalDocument doc) => Task.CompletedTask;
+            public Task SaveChecklistItemsAsync(int docId, List<ChecklistItem> items) => Task.CompletedTask;
+            public Task<List<ChecklistItem>> GetChecklistItemsAsync(int docId) => Task.FromResult(new List<ChecklistItem>());
         }
 
         // ─── Fake IUserRepository ──────────────────────────────────────────────
         private class FakeUserRepository : IUserRepository
         {
             public Task<List<User>> GetAllUsersAsync() => Task.FromResult(new List<User>());
+            public Task<List<User>> GetAllUsersIncludeDisabledAsync() => Task.FromResult(new List<User>());
             public Task<User> GetUserByAdAccountAsync(string adAccount) => Task.FromResult<User>(null);
             public Task<List<User>> GetUsersByRoleAsync(UserRole role) => Task.FromResult(new List<User>());
             public Task AddUserAsync(User user) => Task.CompletedTask;
