@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using FlowMaster.Desktop.ViewModels;
 using FlowMaster.Domain.Models;
+using FlowMaster.Infrastructure.Services;
 
 namespace FlowMaster.Desktop.Views
 {
@@ -66,6 +67,21 @@ namespace FlowMaster.Desktop.Views
         {
             if (sender is ListBox lb && DataContext is AdminViewModel vm)
                 vm.SelectedMembersToAdd = lb.SelectedItems.Cast<User>().ToList();
+        }
+
+        /// <summary>체크리스트 항목 DataGrid 다중 선택 → ViewModel의 SelectedTemplateItems 갱신.</summary>
+        private void TemplateItemsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is DataGrid grid && DataContext is AdminViewModel vm)
+            {
+                var items = new List<FmChecklistTemplateItemDto>();
+                foreach (var item in grid.SelectedItems)
+                {
+                    if (item is FmChecklistTemplateItemDto dto)
+                        items.Add(dto);
+                }
+                vm.SelectedTemplateItems = items;
+            }
         }
     }
 }

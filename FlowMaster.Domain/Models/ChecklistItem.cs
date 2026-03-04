@@ -27,7 +27,19 @@ namespace FlowMaster.Domain.Models
         public string CheckItem { get; set; }
 
         /// <summary>산출물</summary>
-        public string OutputContent { get; set; }
+        private string _outputContent;
+        public string OutputContent
+        {
+            get => _outputContent;
+            set
+            {
+                if (_outputContent != value)
+                {
+                    _outputContent = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
 
         /// <summary>평가 코드 (+, (+), (-), -, nb). 헤더 행은 서브항목에서 자동 집계.</summary>
         private string _evaluationCode;
@@ -45,7 +57,19 @@ namespace FlowMaster.Domain.Models
         }
 
         /// <summary>비고</summary>
-        public string Remarks { get; set; }
+        private string _remarks;
+        public string Remarks
+        {
+            get => _remarks;
+            set
+            {
+                if (_remarks != value)
+                {
+                    _remarks = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
 
         /// <summary>표시 순서</summary>
         public int DisplayOrder { get; set; }

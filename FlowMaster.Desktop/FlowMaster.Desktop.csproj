@@ -13,6 +13,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- dynamic 키워드 (WebBrowser DOM 접근) -->
+    <Reference Include="Microsoft.CSharp" />
     <!-- App.config 읽기 (ApprovalApi URL 등 설정값) -->
     <Reference Include="System.Configuration" />
     <!-- Windows AD 조회 (net472 내장 어셈블리) -->

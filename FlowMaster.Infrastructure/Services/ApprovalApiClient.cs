@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -468,6 +469,60 @@ namespace FlowMaster.Infrastructure.Services
         {
             var response = await _httpClient.DeleteAsync($"{_baseUrl}/fm/app-groups/{groupId}/members/{Uri.EscapeDataString(userId)}");
             await EnsureSuccess(response, "앱 그룹 멤버 제거 실패");
+        }
+
+        // ── 체크리스트 템플릿 ──────────────────────────────────────────
+
+        public async Task<List<FmChecklistTemplateDto>> FmGetAllChecklistTemplatesAsync()
+        {
+            var response = await _httpClient.GetAsync($"{_baseUrl}/fm/checklist-templates");
+            return await ReadJson<List<FmChecklistTemplateDto>>(response, "템플릿 목록 조회 실패");
+        }
+
+        public async Task<FmChecklistTemplateDto> FmGetChecklistTemplateAsync(int templateId)
+        {
+            var response = await _httpClient.GetAsync($"{_baseUrl}/fm/checklist-templates/{templateId}");
+            return await ReadJson<FmChecklistTemplateDto>(response, "템플릿 조회 실패");
+        }
+
+        public async Task<List<FmChecklistTemplateDto>> FmGetChecklistTemplateVersionsAsync(string templateCode)
+        {
+            var response = await _httpClient.GetAsync($"{_baseUrl}/fm/checklist-templates/{Uri.EscapeDataString(templateCode)}/versions");
+            return await ReadJson<List<FmChecklistTemplateDto>>(response, "템플릿 버전 목록 조회 실패");
+        }
+
+        public async Task<int> FmCreateChecklistTemplateAsync(FmChecklistTemplateDto dto)
+        {
+            var response = await _httpClient.PostAsync($"{_baseUrl}/fm/checklist-templates", ToJson(dto));
+            var result = await ReadJson<Newtonsoft.Json.Linq.JObject>(response, "템플릿 생성 실패");
+            return result["templateId"] != null ? (int)result["templateId"] : 0;
+        }
+
+        public async Task FmSaveChecklistTemplateAsync(int templateId, FmChecklistTemplateDto template, bool createNewVersion)
+        {
+            var req = new FmSaveTemplateRequest { Template = template, CreateNewVersion = createNewVersion };
+            var response = await _httpClient.PutAsync($"{_baseUrl}/fm/checklist-templates/{templateId}", ToJson(req));
+            await EnsureSuccess(response, "템플릿 저장 실패");
+        }
+
+        public async Task FmDeleteChecklistTemplateAsync(int templateId)
+        {
+            var response = await _httpClient.DeleteAsync($"{_baseUrl}/fm/checklist-templates/{templateId}");
+            await EnsureSuccess(response, "템플릿 삭제 실패");
+        }
+
+        // ── 산출물 경로 설정 ──────────────────────────────────────────
+
+        public async Task<List<FmOutputPathConfigDto>> FmGetOutputPathConfigsAsync(string tableType)
+        {
+            var response = await _httpClient.GetAsync($"{_baseUrl}/fm/output-path-configs?tableType={Uri.EscapeDataString(tableType)}");
+            return await ReadJson<List<FmOutputPathConfigDto>>(response, "산출물 경로 설정 조회 실패");
+        }
+
+        public async Task FmSaveOutputPathConfigsAsync(string tableType, List<FmOutputPathConfigDto> configs)
+        {
+            var response = await _httpClient.PutAsync($"{_baseUrl}/fm/output-path-configs?tableType={Uri.EscapeDataString(tableType)}", ToJson(configs));
+            await EnsureSuccess(response, "산출물 경로 설정 저장 실패");
         }
     }
 }

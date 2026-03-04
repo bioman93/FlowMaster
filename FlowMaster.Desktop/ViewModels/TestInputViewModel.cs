@@ -28,6 +28,9 @@ namespace FlowMaster.Desktop.ViewModels
         private string _approvalId; // API 결재 ID (APV-xxx)
         private string _writerId;   // 문서 작성자 ID (취소 권한 확인)
         private CancellationTokenSource _versionSuggestionCts;
+        private bool _isLoadingDocument; // 기존 문서 로드 중 InjType setter의 자동 그룹 로드 방지용
+        // InjType 변경 시 비고 재적용을 위해 현재 로드된 템플릿 항목을 캐시
+        private List<FmChecklistTemplateItemDto> _loadedTemplateItems = new List<FmChecklistTemplateItemDto>();
 
         #region Properties
 
@@ -49,8 +52,21 @@ namespace FlowMaster.Desktop.ViewModels
         public string TableType
         {
             get => _tableType;
-            set { if (SetProperty(ref _tableType, value)) UpdateAutoTitle(); }
+            set
+            {
+                if (SetProperty(ref _tableType, value))
+                {
+                    UpdateAutoTitle();
+                    OnPropertyChanged(nameof(IsBA1Type));
+                    OnPropertyChanged(nameof(IsBA2Type));
+                }
+            }
         }
+
+        /// <summary>BA1 문서 유형 여부 (산출물 버튼 표시 제어)</summary>
+        public bool IsBA1Type => string.Equals(_tableType, "BA1", StringComparison.OrdinalIgnoreCase);
+        /// <summary>BA2 문서 유형 여부 (산출물 버튼 표시 제어)</summary>
+        public bool IsBA2Type => string.Equals(_tableType, "BA2", StringComparison.OrdinalIgnoreCase);
 
         private string _genType;
         public string GenType
@@ -73,8 +89,11 @@ namespace FlowMaster.Desktop.ViewModels
             get => _injType;
             set
             {
-                if (SetProperty(ref _injType, value) && !string.IsNullOrEmpty(value))
+                if (SetProperty(ref _injType, value) && !string.IsNullOrEmpty(value) && !_isLoadingDocument)
+                {
                     _ = LoadParticipantGroupAsync(value); // MPI/GDI 그룹 자동 추가
+                    ReapplyTemplateRemarks(value);        // MPI/GDI 전용 비고 재적용
+                }
             }
         }
 
@@ -165,7 +184,17 @@ namespace FlowMaster.Desktop.ViewModels
         public int ChecklistItemCount => ChecklistItems.Count;
 
         // Visibility helpers
-        public Visibility ShowDescription => TableType == "BA2" ? Visibility.Visible : Visibility.Collapsed;
+        private bool _hasTemplateDescription;
+        public bool HasTemplateDescription
+        {
+            get => _hasTemplateDescription;
+            set
+            {
+                if (SetProperty(ref _hasTemplateDescription, value))
+                    OnPropertyChanged(nameof(ShowDescription));
+            }
+        }
+        public Visibility ShowDescription => _hasTemplateDescription ? Visibility.Visible : Visibility.Collapsed;
         /// <summary>승인완료 또는 반려 후 코멘트 표시 (읽기 전용)</summary>
         public Visibility ShowApproverComment => (StatusText == "승인완료" || StatusText == "반려") && !string.IsNullOrEmpty(ApproverComment) ? Visibility.Visible : Visibility.Collapsed;
         /// <summary>결재자가 승인 대기 문서 열었을 때 코멘트 입력란 표시</summary>
@@ -210,6 +239,8 @@ namespace FlowMaster.Desktop.ViewModels
         public ICommand SelectVersionSuggestionCommand { get; }
         /// <summary>버전 제안 선택 후 View에서 TextBox 포커스를 되돌리기 위한 콜백</summary>
         public Action AfterVersionSelected { get; set; }
+        /// <summary>저장 직전 View의 WebBrowser에서 최신 HTML을 읽어오기 위한 콜백</summary>
+        public Func<string> GetDescriptionHtml { get; set; }
 
         // ── 참여자(Watcher) ────────────────────────────────────────────
         public ObservableCollection<User> Participants { get; } = new ObservableCollection<User>();
@@ -241,6 +272,12 @@ namespace FlowMaster.Desktop.ViewModels
 
         /// <summary>그룹 자동 추가된 참여자 ID 추적 (InjType 변경 시 교체)</summary>
         private HashSet<string> _groupParticipantIds = new HashSet<string>();
+
+        // ── 산출물 경로 설정 ────────────────────────────────────────────
+        /// <summary>현재 TableType의 산출물 버튼 경로 설정 목록 (Admin 편집용)</summary>
+        public ObservableCollection<FmOutputPathConfigDto> OutputPathConfigs { get; }
+            = new ObservableCollection<FmOutputPathConfigDto>();
+
 
         #endregion
 
@@ -303,6 +340,7 @@ namespace FlowMaster.Desktop.ViewModels
             StatusColor = "#666";
 
             ChecklistItems.Clear();
+            _loadedTemplateItems.Clear();
 
             if (cloneSource != null)
             {
@@ -334,9 +372,11 @@ namespace FlowMaster.Desktop.ViewModels
             }
             else
             {
-                // Load default template
-                LoadDefaultChecklist(tableType);
+                // Load default template (API 우선, 폴백 하드코딩)
+                await LoadDefaultChecklistAsync(tableType);
             }
+
+            await LoadOutputPathConfigsAsync(tableType);
 
             OnPropertyChanged(nameof(ChecklistItemCount));
             OnPropertyChanged(nameof(ShowDescription));
@@ -378,31 +418,58 @@ namespace FlowMaster.Desktop.ViewModels
                 return;
             }
 
-            DocId = doc.DocId;
-            Title = doc.Title;
-            TableType = doc.TableType;
-            GenType = doc.GenType;
-            InjType = doc.InjType;
-            WriterName = doc.WriterName;
-            Description = doc.Description;
-            ApproverComment = doc.ApproverComment;
-            _writerId = doc.WriterId;
-            ApprovalDate = doc.ApprovalTime?.ToString("yyyy-MM-dd HH:mm") ?? "";
-            Version = doc.Version;
-            OutputPath = doc.OutputPath;
-            StatusText = GetStatusText(doc.Status);
-            StatusColor = GetStatusColor(StatusText);
+            // 기존 문서 로드 중에는 InjType setter의 자동 그룹 로드를 막음
+            // (로드 완료 후 DB에 저장된 참여자를 직접 복원하므로)
+            _isLoadingDocument = true;
+            try
+            {
+                DocId = doc.DocId;
+                Title = doc.Title;
+                TableType = doc.TableType;
+                GenType = doc.GenType;
+                InjType = doc.InjType;
+                WriterName = doc.WriterName;
+                Description = doc.Description;
+                ApproverComment = doc.ApproverComment;
+                _writerId = doc.WriterId;
+                ApprovalDate = doc.ApprovalTime?.ToString("yyyy-MM-dd HH:mm") ?? "";
+                Version = doc.Version;
+                OutputPath = doc.OutputPath;
+                StatusText = GetStatusText(doc.Status);
+                StatusColor = GetStatusColor(StatusText);
+            }
+            finally
+            {
+                _isLoadingDocument = false;
+            }
 
             // 결재자 매칭: CurrentApproverId → AvailableApprovers에서 찾아 설정 (Issue 3)
             SelectedApprover = AvailableApprovers.FirstOrDefault(u =>
                 u.UserId == doc.CurrentApproverId ||
                 u.AdAccount == doc.CurrentApproverId);
 
+            // 체크리스트: 템플릿 기반으로 구성 후 저장된 EvaluationCode/Remarks를 RowNo 기준으로 매핑
             ChecklistItems.Clear();
-            if (doc.ChecklistItems != null)
+            var templateItems = await GetTemplateItemsAsync(doc.TableType);
+            if (doc.ChecklistItems != null && doc.ChecklistItems.Count > 0)
             {
-                foreach (var item in doc.ChecklistItems)
-                    ChecklistItems.Add(item);
+                var savedByRowNo = doc.ChecklistItems.ToDictionary(
+                    x => x.RowNo ?? "", x => x, StringComparer.OrdinalIgnoreCase);
+                foreach (var tmpl in templateItems)
+                {
+                    if (savedByRowNo.TryGetValue(tmpl.RowNo ?? "", out var saved))
+                    {
+                        tmpl.EvaluationCode = saved.EvaluationCode;
+                        tmpl.Remarks        = saved.Remarks;
+                    }
+                    ChecklistItems.Add(tmpl);
+                }
+            }
+            else
+            {
+                // 저장된 값이 없으면 템플릿만 표시
+                foreach (var tmpl in templateItems)
+                    ChecklistItems.Add(tmpl);
             }
             SubscribeChecklistEvents();
 
@@ -427,18 +494,172 @@ namespace FlowMaster.Desktop.ViewModels
             OnPropertyChanged(nameof(CanSelectInjType));
             OnPropertyChanged(nameof(SaveButtonText));
             OnPropertyChanged(nameof(CanCancel));
+
+            await LoadOutputPathConfigsAsync(doc.TableType);
         }
 
         // 평가코드 가중치 (낮을수록 우선순위 낮음 = 집계 시 선택됨)
         // 인덱스 0 = 최저(nb), 인덱스 4 = 최고(+)
         private static readonly string[] EvalOrder = { "nb", "-", "(-)", "(+)", "+" };
 
+        /// <summary>
+        /// InjType이 변경될 때 이미 로드된 체크리스트 항목의 비고를 재적용합니다.
+        /// MPI/GDI 전용 비고가 있는 항목 중, 현재 값이 반대쪽 InjType 기본값과 일치하는 경우에만
+        /// 업데이트합니다. 사용자가 직접 수정한 값은 보존됩니다.
+        /// </summary>
+        private void ReapplyTemplateRemarks(string injType)
+        {
+            if (_loadedTemplateItems.Count == 0) return;
+
+            var templateMap = _loadedTemplateItems
+                .Where(t => !string.IsNullOrEmpty(t.RemarksMpi) || !string.IsNullOrEmpty(t.RemarksGdi))
+                .ToDictionary(t => t.RowNo, StringComparer.OrdinalIgnoreCase);
+
+            if (templateMap.Count == 0) return;
+
+            foreach (var ci in ChecklistItems)
+            {
+                if (!templateMap.TryGetValue(ci.RowNo, out var ti)) continue;
+
+                // 현재 비고 값이 어느 한쪽 InjType 기본값과 일치할 때만 교체
+                // (사용자가 직접 수정한 값이면 건드리지 않음)
+                var isMpiDefault = string.Equals(ci.Remarks, ti.RemarksMpi, StringComparison.Ordinal);
+                var isGdiDefault = string.Equals(ci.Remarks, ti.RemarksGdi, StringComparison.Ordinal);
+                var isCommonDefault = string.Equals(ci.Remarks, ti.Remarks, StringComparison.Ordinal);
+                var isEmpty = string.IsNullOrEmpty(ci.Remarks);
+
+                if (isMpiDefault || isGdiDefault || isCommonDefault || isEmpty)
+                    ci.Remarks = ResolveRemarks(ti, injType);
+            }
+        }
+
+        /// <summary>
+        /// InjType(MPI/GDI)에 따라 올바른 비고 기본값을 반환합니다.
+        /// MPI 전용값 또는 GDI 전용값이 있으면 우선 사용하고, 없으면 공통 Remarks를 사용합니다.
+        /// </summary>
+        private static string ResolveRemarks(FmChecklistTemplateItemDto ti, string injType)
+        {
+            if (string.Equals(injType, "MPI", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrEmpty(ti.RemarksMpi))
+                return ti.RemarksMpi;
+
+            if (string.Equals(injType, "GDI", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrEmpty(ti.RemarksGdi))
+                return ti.RemarksGdi;
+
+            return ti.Remarks;
+        }
+
+        // ── 산출물 경로 설정 ────────────────────────────────────────────
+
+        /// <summary>
+        /// 현재 TableType의 산출물 경로 설정을 서버에서 로드합니다.
+        /// </summary>
+        private async Task LoadOutputPathConfigsAsync(string tableType)
+        {
+            if (_apiClient == null || string.IsNullOrEmpty(tableType)) return;
+            try
+            {
+                var configs = await _apiClient.FmGetOutputPathConfigsAsync(tableType);
+                OutputPathConfigs.Clear();
+                foreach (var c in configs) OutputPathConfigs.Add(c);
+            }
+            catch { /* API 미연결 시 무시 */ }
+        }
+
+        /// <summary>
+        /// 산출물 버튼 클릭 처리: OutputPath 설정 + SVN/탐색기로 경로 열기.
+        /// </summary>
+        public void SelectDocumentOutput(string buttonName)
+        {
+            if (string.IsNullOrEmpty(buttonName)) return;
+            OutputPath = buttonName;
+
+            var config = OutputPathConfigs.FirstOrDefault(c =>
+                string.Equals(c.ButtonName, buttonName, StringComparison.OrdinalIgnoreCase));
+
+            if (config == null || string.IsNullOrWhiteSpace(config.Path)) return;
+
+            try
+            {
+                if (string.Equals(config.LaunchType, "SVN", StringComparison.OrdinalIgnoreCase))
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "TortoiseProc.exe",
+                        Arguments = $"/command:repobrowser /path:\"{config.Path}\"",
+                        UseShellExecute = true
+                    });
+                }
+                else
+                {
+                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "explorer.exe",
+                        Arguments = $"\"{config.Path}\"",
+                        UseShellExecute = true
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"경로를 열 수 없습니다:\n{config.Path}\n\n{ex.Message}",
+                    "오류", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private async Task LoadDefaultChecklistAsync(string tableType)
+        {
+            // API에서 최신 템플릿 로드 시도
+            if (_apiClient != null)
+            {
+                try
+                {
+                    var templates = await _apiClient.FmGetAllChecklistTemplatesAsync();
+                    var latest = templates.FirstOrDefault(t =>
+                        string.Equals(t.TemplateCode, tableType, StringComparison.OrdinalIgnoreCase)
+                        && t.IsLatest);
+                    if (latest != null)
+                    {
+                        HasTemplateDescription = latest.HasDescription;
+                        var detail = await _apiClient.FmGetChecklistTemplateAsync(latest.TemplateId);
+                        if (detail?.Items != null)
+                        {
+                            // InjType 변경 시 비고 재적용을 위해 캐시
+                            _loadedTemplateItems = detail.Items.ToList();
+
+                            foreach (var ti in detail.Items)
+                                ChecklistItems.Add(new ChecklistItem
+                                {
+                                    RowNo          = ti.RowNo,
+                                    CheckItem      = ti.CheckItem,
+                                    OutputContent  = ti.OutputContent,
+                                    EvaluationCode = ti.EvaluationCode,
+                                    Remarks        = ResolveRemarks(ti, InjType),
+                                    DisplayOrder   = ti.DisplayOrder
+                                });
+                            SubscribeChecklistEvents();
+                            return;
+                        }
+                    }
+                }
+                catch { /* API 실패 시 하드코딩 폴백 */ }
+            }
+
+            // API 미연결 또는 실패 시 하드코딩 폴백
+            HasTemplateDescription = string.Equals(tableType, "BA2", StringComparison.OrdinalIgnoreCase);
+            var items = GetDefaultChecklistItems(tableType);
+            foreach (var item in items)
+                ChecklistItems.Add(item);
+            SubscribeChecklistEvents();
+        }
+
+        // 하위 호환성 유지 (외부 DB 복제 경로에서 여전히 동기 사용)
         private void LoadDefaultChecklist(string tableType)
         {
             var items = GetDefaultChecklistItems(tableType);
             foreach (var item in items)
                 ChecklistItems.Add(item);
-
             SubscribeChecklistEvents();
         }
 
@@ -543,6 +764,45 @@ namespace FlowMaster.Desktop.ViewModels
                 if (idx < minIndex) { minIndex = idx; result = code; }
             }
             return result;
+        }
+
+        /// <summary>
+        /// API에서 tableType에 맞는 최신 템플릿 항목을 가져옵니다.
+        /// API 미연결 또는 실패 시 하드코딩 항목으로 폴백합니다.
+        /// </summary>
+        private async Task<List<ChecklistItem>> GetTemplateItemsAsync(string tableType)
+        {
+            if (_apiClient != null)
+            {
+                try
+                {
+                    var templates = await _apiClient.FmGetAllChecklistTemplatesAsync();
+                    var latest = templates.FirstOrDefault(t =>
+                        string.Equals(t.TemplateCode, tableType, StringComparison.OrdinalIgnoreCase)
+                        && t.IsLatest);
+                    if (latest != null)
+                    {
+                        HasTemplateDescription = latest.HasDescription;
+                        var detail = await _apiClient.FmGetChecklistTemplateAsync(latest.TemplateId);
+                        if (detail?.Items != null && detail.Items.Count > 0)
+                        {
+                            return detail.Items.Select(ti => new ChecklistItem
+                            {
+                                RowNo          = ti.RowNo,
+                                CheckItem      = ti.CheckItem,
+                                OutputContent  = ti.OutputContent,
+                                EvaluationCode = ti.EvaluationCode,
+                                Remarks        = ResolveRemarks(ti, InjType),
+                                DisplayOrder   = ti.DisplayOrder
+                            }).ToList();
+                        }
+                    }
+                }
+                catch { /* API 실패 시 하드코딩 폴백 */ }
+            }
+            // 폴백: BA2는 기본적으로 Description 있음
+            HasTemplateDescription = string.Equals(tableType, "BA2", StringComparison.OrdinalIgnoreCase);
+            return GetDefaultChecklistItems(tableType);
         }
 
         private List<ChecklistItem> GetDefaultChecklistItems(string tableType)
@@ -659,10 +919,18 @@ namespace FlowMaster.Desktop.ViewModels
             }
         }
 
+        /// <summary>저장 전 WebBrowser의 최신 HTML을 Description에 반영</summary>
+        private void SyncDescriptionFromView()
+        {
+            if (GetDescriptionHtml != null)
+                Description = GetDescriptionHtml() ?? Description;
+        }
+
         private async Task SaveAsync()
         {
             try
             {
+                SyncDescriptionFromView();
                 var doc = new ApprovalDocument
                 {
                     DocId = DocId,
@@ -728,6 +996,7 @@ namespace FlowMaster.Desktop.ViewModels
 
             try
             {
+                SyncDescriptionFromView();
                 // 먼저 내부 DB에 저장 (임시저장 → Pending)
                 var doc = new ApprovalDocument
                 {

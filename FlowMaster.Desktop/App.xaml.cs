@@ -81,7 +81,8 @@ namespace FlowMaster.Desktop
                 sp.GetRequiredService<IUserRepository>(),
                 sp.GetRequiredService<IAppGroupRepository>(),
                 adFallback,
-                sp.GetRequiredService<IApprovalRepository>()));
+                sp.GetRequiredService<IApprovalRepository>(),
+                sp.GetRequiredService<ApprovalApiClient>()));
             services.AddTransient<DashboardViewModel>(sp => new DashboardViewModel(
                 sp.GetRequiredService<IApprovalRepository>(),
                 sp.GetRequiredService<IUserRepository>(),

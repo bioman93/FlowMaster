@@ -56,36 +56,34 @@
                            FontSize="16" Foreground="#555"
                            HorizontalAlignment="Center" Margin="0,0,0,20"/>
                 
-                <!-- Type Selection Cards -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                    <!-- BA1 Card -->
-                    <Button Style="{StaticResource TypeCardButton}" 
-                            Command="{Binding SelectTypeCommand}" CommandParameter="BA1">
-                        <StackPanel>
-                            <TextBlock Text="BA1" FontSize="32" FontWeight="Bold" 
-                                       Foreground="#002c5f" HorizontalAlignment="Center"/>
-                            <TextBlock Text="22항목" FontSize="14" Foreground="#666" 
-                                       HorizontalAlignment="Center" Margin="0,10,0,0"/>
-                            <Border Background="#ffe0e0" CornerRadius="4" Padding="8,4" Margin="0,10,0,0">
-                                <TextBlock Text="Description 없음" FontSize="12" Foreground="#c00"/>
-                            </Border>
-                        </StackPanel>
-                    </Button>
-                    
-                    <!-- BA2 Card -->
-                    <Button Style="{StaticResource TypeCardButton}" 
-                            Command="{Binding SelectTypeCommand}" CommandParameter="BA2">
-                        <StackPanel>
-                            <TextBlock Text="BA2" FontSize="32" FontWeight="Bold" 
-                                       Foreground="#002c5f" HorizontalAlignment="Center"/>
-                            <TextBlock Text="24항목" FontSize="14" Foreground="#666" 
-                                       HorizontalAlignment="Center" Margin="0,10,0,0"/>
-                            <Border Background="#e0ffe0" CornerRadius="4" Padding="8,4" Margin="0,10,0,0">
-                                <TextBlock Text="Description 포함" FontSize="12" Foreground="#080"/>
-                            </Border>
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
+                <!-- Type Selection Cards (동적 로드) -->
+                <ItemsControl ItemsSource="{Binding AvailableTemplates}" HorizontalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel HorizontalAlignment="Center"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Button Style="{StaticResource TypeCardButton}"
+                                    Command="{Binding DataContext.SelectTypeCommand,
+                                        RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding TemplateCode}">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding TemplateCode}" FontSize="32" FontWeight="Bold"
+                                               Foreground="#002c5f" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Name}" FontSize="12" Foreground="#555"
+                                               HorizontalAlignment="Center" Margin="0,8,0,0"
+                                               MaxWidth="160" TextWrapping="Wrap" TextAlignment="Center"/>
+                                    <TextBlock FontSize="11" Foreground="#888" HorizontalAlignment="Center"
+                                               Margin="0,6,0,0">
+                                        <Run Text="v"/><Run Text="{Binding Version}"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
                 
                 <!-- Clone Section -->
                 <Border Background="#f8f8f8" CornerRadius="8" Margin="0,30,0,0" Padding="15">

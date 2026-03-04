@@ -393,6 +393,367 @@
                 </Grid>
             </TabItem>
 
+            <!-- ═══ 체크리스트 템플릿 탭 ═══ -->
+            <TabItem Header="체크리스트 템플릿">
+                <Grid Margin="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="200"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 왼쪽: 템플릿 목록 -->
+                    <DockPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock DockPanel.Dock="Top" Text="템플릿 목록" Style="{StaticResource HeaderText}"/>
+                        <!-- 버튼 영역 -->
+                        <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                            <Button Content="+ 새 템플릿"
+                                    Command="{Binding NewTemplateCommand}"
+                                    Style="{StaticResource PrimaryButton}"
+                                    HorizontalAlignment="Stretch" Margin="0,0,0,4"/>
+                            <Button Content="↺ 새로고침"
+                                    Command="{Binding RefreshTemplatesCommand}"
+                                    Style="{StaticResource NormalButton}"
+                                    HorizontalAlignment="Stretch"/>
+                        </StackPanel>
+                        <ListBox ItemsSource="{Binding ChecklistTemplates}"
+                                 SelectedItem="{Binding SelectedTemplate}"
+                                 BorderBrush="#ddd" BorderThickness="1">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="4,2">
+                                        <TextBlock Text="{Binding TemplateCode}" FontWeight="SemiBold" Foreground="#002c5f"/>
+                                        <TextBlock Text="{Binding Name}" FontSize="11" TextWrapping="Wrap"/>
+                                        <TextBlock FontSize="10" Foreground="#888">
+                                            <Run Text="v"/><Run Text="{Binding Version}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+
+                    <!-- 오른쪽: 템플릿 편집 폼 -->
+                    <Grid Grid.Column="1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>  <!-- 설명란 미리보기 (조건부) -->
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- 이름/설명/Description 포함 여부 -->
+                        <StackPanel Grid.Row="0" Margin="0,0,0,8">
+                            <!-- 폼 타이틀: 새 템플릿 작성 / 템플릿 수정 -->
+                            <TextBlock Text="{Binding TemplateFormTitle}"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="#002c5f" Margin="0,0,0,8"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <TextBlock Text="이름" Style="{StaticResource FormLabel}" Width="50"/>
+                                <TextBox Text="{Binding TemplateFormCode, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="100" Padding="4,3"/>
+                                <TextBlock Text="(예: BA3)" Foreground="#888" Margin="8,0,0,0" VerticalAlignment="Center" FontSize="11"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <TextBlock Text="설명" Style="{StaticResource FormLabel}" Width="50"/>
+                                <TextBox Text="{Binding TemplateFormName, UpdateSourceTrigger=PropertyChanged}"
+                                         Width="300" Padding="4,3"/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <CheckBox IsChecked="{Binding TemplateHasDescription}"
+                                          Content="문서 작성 시 설명(Description) 입력란 포함"
+                                          VerticalAlignment="Center" Margin="50,0,0,0"
+                                          ToolTip="체크 시 테스트 결과 입력 화면에서 설명 텍스트 입력란이 표시됩니다."/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- 항목 헤더 + 추가/가져오기 버튼 -->
+                        <DockPanel Grid.Row="1" Margin="0,0,0,4">
+                            <TextBlock Text="체크리스트 항목" Style="{StaticResource HeaderText}" VerticalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                                <!-- 기존 템플릿 편집 시에만 표시 -->
+                                <Button Content="📤 현재 내보내기" Command="{Binding ExportCurrentCsvCommand}"
+                                        Visibility="{Binding IsTemplateEditMode, Converter={StaticResource BoolToVis}}"
+                                        Style="{StaticResource NormalButton}" ToolTip="현재 템플릿 항목을 CSV로 내보내기 (Excel에서 수정 후 재가져오기 가능)"/>
+                                <!-- 새 템플릿 작성 시에만 표시 -->
+                                <Button Content="📥 샘플 내보내기" Command="{Binding ExportSampleCsvCommand}"
+                                        Visibility="{Binding IsNewTemplate, Converter={StaticResource BoolToVis}}"
+                                        Style="{StaticResource NormalButton}" ToolTip="작성 양식용 샘플 CSV 파일 내보내기 (Excel로 열기)"/>
+                                <Button Content="📋 클립보드 붙여넣기" Command="{Binding ImportFromClipboardCommand}"
+                                        Style="{StaticResource NormalButton}" ToolTip="엑셀에서 셀 선택 후 Ctrl+C → 이 버튼 클릭 (보안툴 암호화 우회)"/>
+                                <Button Content="🗑 선택 삭제" Command="{Binding RemoveSelectedTemplateItemsCommand}"
+                                        Style="{StaticResource NormalButton}" ToolTip="선택된 행을 모두 삭제 (Ctrl+클릭 또는 Shift+클릭으로 복수 선택)"/>
+                                <Button Content="▶ 메인 추가" Command="{Binding AddMainTemplateItemCommand}"
+                                        Style="{StaticResource NormalButton}" ToolTip="메인 항목 추가 (예: 1, 2, 3)"/>
+                                <Button Content="└ 서브 추가" Command="{Binding AddSubTemplateItemCommand}"
+                                        Style="{StaticResource NormalButton}" ToolTip="서브 항목 추가 (예: 1.1, 1.2, 2.1)"/>
+                            </StackPanel>
+                        </DockPanel>
+
+                        <!-- 항목 DataGrid - 7열: No. / 확인항목(멀티라인) / 산출물 / 평가 / 비고(공통) / 비고(MPI) / 비고(GDI) -->
+                        <DataGrid Grid.Row="2"
+                                  x:Name="TemplateItemsGrid"
+                                  ItemsSource="{Binding TemplateItems}"
+                                  SelectionMode="Extended"
+                                  SelectionChanged="TemplateItemsGrid_SelectionChanged"
+                                  AutoGenerateColumns="False"
+                                  CanUserAddRows="False"
+                                  CanUserDeleteRows="False"
+                                  GridLinesVisibility="Horizontal"
+                                  HeadersVisibility="Column"
+                                  EnableRowVirtualization="False">
+                            <DataGrid.RowStyle>
+                                <Style TargetType="DataGridRow">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                                            <Setter Property="Background" Value="#dde4f0"/>
+                                            <Setter Property="FontWeight" Value="SemiBold"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DataGrid.RowStyle>
+                            <DataGrid.Columns>
+                                <!-- No. -->
+                                <DataGridTextColumn Header="No." Binding="{Binding RowNo, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="65" MinWidth="50"/>
+
+                                <!-- 확인항목: 멀티라인 TextBox -->
+                                <DataGridTemplateColumn Header="확인항목" Width="*" MinWidth="120">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding CheckItem}" TextWrapping="Wrap"
+                                                       Padding="4,3" VerticalAlignment="Top"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                    <DataGridTemplateColumn.CellEditingTemplate>
+                                        <DataTemplate>
+                                            <TextBox Text="{Binding CheckItem, UpdateSourceTrigger=PropertyChanged}"
+                                                     TextWrapping="Wrap" AcceptsReturn="True"
+                                                     MinHeight="52" MaxHeight="200"
+                                                     VerticalScrollBarVisibility="Auto"
+                                                     Padding="4,3"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellEditingTemplate>
+                                </DataGridTemplateColumn>
+
+                                <!-- 산출물 -->
+                                <DataGridTemplateColumn Header="산출물(기본값)" Width="140" MinWidth="80">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding OutputContent}" TextWrapping="Wrap"
+                                                       Padding="4,3" VerticalAlignment="Top"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                    <DataGridTemplateColumn.CellEditingTemplate>
+                                        <DataTemplate>
+                                            <TextBox Text="{Binding OutputContent, UpdateSourceTrigger=PropertyChanged}"
+                                                     TextWrapping="Wrap" AcceptsReturn="True"
+                                                     MinHeight="36" MaxHeight="200"
+                                                     VerticalScrollBarVisibility="Auto"
+                                                     Padding="4,3"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellEditingTemplate>
+                                </DataGridTemplateColumn>
+
+                                <!-- 평가(기본값): ComboBox -->
+                                <DataGridTemplateColumn Header="평가(기본)" Width="80" MinWidth="70">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding EvaluationCode}"
+                                                       HorizontalAlignment="Center" Padding="4,3"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                    <DataGridTemplateColumn.CellEditingTemplate>
+                                        <DataTemplate>
+                                            <ComboBox SelectedItem="{Binding EvaluationCode, UpdateSourceTrigger=PropertyChanged}"
+                                                      ItemsSource="{Binding DataContext.EvalOptions,
+                                                          RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                      IsEditable="False"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellEditingTemplate>
+                                </DataGridTemplateColumn>
+
+                                <!-- 비고(공통): MPI/GDI 구분 없이 적용 -->
+                                <DataGridTextColumn Header="비고(공통)"
+                                                    Binding="{Binding Remarks, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="110" MinWidth="70"/>
+
+                                <!-- 비고(MPI): 값이 있으면 MPI 문서에서 비고(공통) 대신 사용 -->
+                                <DataGridTextColumn Header="비고(MPI)"
+                                                    Binding="{Binding RemarksMpi, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="110" MinWidth="70"/>
+
+                                <!-- 비고(GDI): 값이 있으면 GDI 문서에서 비고(공통) 대신 사용 -->
+                                <DataGridTextColumn Header="비고(GDI)"
+                                                    Binding="{Binding RemarksGdi, UpdateSourceTrigger=PropertyChanged}"
+                                                    Width="110" MinWidth="70"/>
+
+                            </DataGrid.Columns>
+                        </DataGrid>
+
+                        <!-- 설명란 미리보기: HasDescription 체크 시만 DataGrid 아래에 표시 -->
+                        <Border Grid.Row="3"
+                                Visibility="{Binding TemplateHasDescription, Converter={StaticResource BoolToVis}}"
+                                Background="#f0f5ff" BorderBrush="#7b9fd4" BorderThickness="1"
+                                CornerRadius="4" Padding="10,6" Margin="0,4,0,0">
+                            <StackPanel>
+                                <TextBlock Text="미리보기 — 설명 입력란" FontSize="11" Foreground="#5a7abf" Margin="0,0,0,4"/>
+                                <TextBox IsReadOnly="True"
+                                         Text="(테스트 결과 입력 시 작성자가 이 영역에 설명을 입력합니다)"
+                                         Foreground="#999" FontStyle="Italic" TextWrapping="Wrap"
+                                         Background="Transparent" BorderBrush="#aac0e8"
+                                         Padding="4,4" MinHeight="40"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 저장/삭제 버튼 -->
+                        <DockPanel Grid.Row="4" Margin="0,8,0,0">
+                            <TextBlock Text="{Binding TemplateStatusMessage}"
+                                       VerticalAlignment="Center" FontSize="12">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#666"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding TemplateStatusIsError}" Value="True">
+                                                <Setter Property="Foreground" Value="#c0392b"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" DockPanel.Dock="Right">
+                                <Button Content="↩ 롤백" Command="{Binding RevertTemplateCommand}"
+                                        Style="{StaticResource NormalButton}"
+                                        ToolTip="마지막 저장 상태로 되돌립니다. (새 템플릿이면 작성 내용을 초기화합니다.)"/>
+                                <Button Content="저장" Command="{Binding SaveTemplateCommand}"
+                                        Style="{StaticResource PrimaryButton}"/>
+                                <Button Content="삭제" Command="{Binding DeleteTemplateCommand}"
+                                        Style="{StaticResource DangerButton}"
+                                        Visibility="{Binding IsTemplateEditMode, Converter={StaticResource BoolToVis}}"/>
+                            </StackPanel>
+                        </DockPanel>
+
+                        <!-- 버전/CSV 안내 -->
+                        <StackPanel Grid.Row="5" Margin="0,6,0,0">
+                            <TextBlock FontSize="11" Foreground="#888" TextWrapping="Wrap"
+                                       Text="저장 시 버전 변경 여부를 묻습니다. 새 버전으로 저장하면 기존 버전은 보존됩니다."/>
+                            <TextBlock FontSize="11" Foreground="#888" TextWrapping="Wrap" Margin="0,2,0,0"
+                                       Text="클립보드 열 순서: No. / 확인항목 / 산출물 / 평가 / 비고(공통) / 비고(MPI) / 비고(GDI) — 탭/세미콜론/쉼표 구분자 자동 감지. 비고(MPI)/비고(GDI)는 값이 있을 때만 해당 InjType 문서에 적용됩니다."/>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+        <!-- ── 탭 5: 산출물 경로 설정 ── -->
+        <TabItem Header="산출물 경로 설정">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- BA1 섹션 -->
+                <TextBlock Grid.Row="0" Text="BA1 산출물 버튼 경로" Style="{StaticResource HeaderText}" Margin="0,0,0,6"/>
+                <DataGrid Grid.Row="1" ItemsSource="{Binding Ba1OutputConfigs}"
+                          AutoGenerateColumns="False" CanUserAddRows="False"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          BorderBrush="#ddd" BorderThickness="1"
+                          CanUserSortColumns="False" SelectionMode="Single"
+                          Margin="0,0,0,10">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="버튼명" Binding="{Binding ButtonName}" Width="160" IsReadOnly="True">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                    <Setter Property="Padding" Value="4,3"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="실행방식" Binding="{Binding LaunchType}" Width="90" IsReadOnly="True">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                    <Setter Property="Padding" Value="4,3"/>
+                                    <Setter Property="Foreground" Value="#555"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTemplateColumn Header="경로" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Path}" VerticalAlignment="Center"
+                                               Padding="4,3" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Path}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                            <DataGridTemplateColumn.CellEditingTemplate>
+                                <DataTemplate>
+                                    <TextBox Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="4,3" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellEditingTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <!-- BA2 섹션 -->
+                <TextBlock Grid.Row="2" Text="BA2 산출물 버튼 경로" Style="{StaticResource HeaderText}" Margin="0,0,0,6"/>
+                <DataGrid Grid.Row="3" ItemsSource="{Binding Ba2OutputConfigs}"
+                          AutoGenerateColumns="False" CanUserAddRows="False"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          BorderBrush="#ddd" BorderThickness="1"
+                          CanUserSortColumns="False" SelectionMode="Single">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="버튼명" Binding="{Binding ButtonName}" Width="160" IsReadOnly="True">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                    <Setter Property="Padding" Value="4,3"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="실행방식" Binding="{Binding LaunchType}" Width="90" IsReadOnly="True">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="VerticalAlignment" Value="Center"/>
+                                    <Setter Property="Padding" Value="4,3"/>
+                                    <Setter Property="Foreground" Value="#555"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTemplateColumn Header="경로" Width="*">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Path}" VerticalAlignment="Center"
+                                               Padding="4,3" TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Path}"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                            <DataGridTemplateColumn.CellEditingTemplate>
+                                <DataTemplate>
+                                    <TextBox Text="{Binding Path, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="4,3" VerticalAlignment="Center"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellEditingTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <!-- 저장 버튼 -->
+                <DockPanel Grid.Row="4" Margin="0,10,0,0">
+                    <TextBlock Text="경로를 수정한 후 저장 버튼을 클릭하세요."
+                               FontSize="11" Foreground="#888" VerticalAlignment="Center"/>
+                    <Button Content="저장" Command="{Binding SaveOutputConfigsCommand}"
+                            Style="{StaticResource PrimaryButton}"
+                            HorizontalAlignment="Right" DockPanel.Dock="Right"/>
+                </DockPanel>
+            </Grid>
+        </TabItem>
+
         </TabControl>
     </Grid>
 </UserControl>

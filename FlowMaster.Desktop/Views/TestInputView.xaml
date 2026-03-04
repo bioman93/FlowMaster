@@ -3,11 +3,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:FlowMaster.Desktop.Views"
              mc:Ignorable="d"
              d:DesignHeight="800" d:DesignWidth="1200">
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <local:OutputButtonBrushConverter x:Key="OutputBtnBrush"/>
 
         <Style x:Key="SectionHeader" TargetType="TextBlock">
             <Setter Property="FontSize" Value="13"/>
@@ -36,7 +38,7 @@
                 <RowDefinition Height="Auto"/>  <!-- Row 0: Header -->
                 <RowDefinition Height="Auto"/>  <!-- Row 1: 7:3 main area -->
                 <RowDefinition Height="*"/>     <!-- Row 2: Checklist -->
-                <RowDefinition Height="Auto"/>  <!-- Row 3: 설명 (BA2만) -->
+                <RowDefinition Height="Auto" MaxHeight="210"/>  <!-- Row 3: 설명 (최대 210px, 체크리스트 침범 방지) -->
             </Grid.RowDefinitions>
 
             <!-- ── Header ── -->
@@ -146,7 +148,7 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="22"/>  <!-- 담당자 -->
                                 <RowDefinition Height="Auto"/> <!-- 평가결과 (조건부) -->
-                                <RowDefinition Height="26"/>  <!-- 산출물경로 -->
+                                <RowDefinition Height="Auto"/>  <!-- 산출물경로 -->
                             </Grid.RowDefinitions>
 
                             <!-- 담당자 -->
@@ -165,57 +167,229 @@
                                            Foreground="White" FontWeight="Bold" FontSize="14"/>
                             </Border>
 
-                            <!-- 산출물경로 -->
+                            <!-- 산출물경로: BA1/BA2는 버튼 선택, 그 외 유형은 TextBox -->
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="산출물:" Style="{StaticResource FieldLabel}"/>
-                            <TextBox Grid.Row="2" Grid.Column="1"
-                                     Text="{Binding OutputPath, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding CanEdit}" Padding="4,3"
-                                     VerticalAlignment="Center"/>
-                        </Grid>
+                            <Grid Grid.Row="2" Grid.Column="1" Margin="0,2,0,2">
+                                <!-- BA1 버튼 (4개) -->
+                                <WrapPanel Visibility="{Binding IsBA1Type, Converter={StaticResource BoolToVis}}">
+                                    <Button Content="Baseline 문서" Click="DocumentOutputButton_Click"
+                                            Padding="6,3" Margin="0,0,4,2" FontSize="11" Cursor="Hand"
+                                            BorderBrush="#002c5f" BorderThickness="1">
+                                        <Button.Background>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Background>
+                                        <Button.Foreground>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}" ConverterParameter="fg">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Foreground>
+                                    </Button>
+                                    <Button Content="SW 배포 문서" Click="DocumentOutputButton_Click"
+                                            Padding="6,3" Margin="0,0,4,2" FontSize="11" Cursor="Hand"
+                                            BorderBrush="#002c5f" BorderThickness="1">
+                                        <Button.Background>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Background>
+                                        <Button.Foreground>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}" ConverterParameter="fg">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Foreground>
+                                    </Button>
+                                    <Button Content="All-in-one 문서" Click="DocumentOutputButton_Click"
+                                            Padding="6,3" Margin="0,0,4,2" FontSize="11" Cursor="Hand"
+                                            BorderBrush="#002c5f" BorderThickness="1">
+                                        <Button.Background>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Background>
+                                        <Button.Foreground>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}" ConverterParameter="fg">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Foreground>
+                                    </Button>
+                                    <Button Content="LCR 심의회 회의록" Click="DocumentOutputButton_Click"
+                                            Padding="6,3" Margin="0,0,4,2" FontSize="11" Cursor="Hand"
+                                            BorderBrush="#002c5f" BorderThickness="1">
+                                        <Button.Background>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Background>
+                                        <Button.Foreground>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}" ConverterParameter="fg">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Foreground>
+                                    </Button>
+                                </WrapPanel>
 
-                        <!-- 참여자 섹션 -->
-                        <StackPanel Margin="0,6,0,0">
-                            <TextBlock Text="참여자" Style="{StaticResource SectionHeader}" Margin="0,0,0,6"/>
+                                <!-- BA2 버튼 (5개) -->
+                                <WrapPanel Visibility="{Binding IsBA2Type, Converter={StaticResource BoolToVis}}">
+                                    <Button Content="Baseline 문서" Click="DocumentOutputButton_Click"
+                                            Padding="6,3" Margin="0,0,4,2" FontSize="11" Cursor="Hand"
+                                            BorderBrush="#002c5f" BorderThickness="1">
+                                        <Button.Background>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Background>
+                                        <Button.Foreground>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}" ConverterParameter="fg">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Foreground>
+                                    </Button>
+                                    <Button Content="SW 배포 문서" Click="DocumentOutputButton_Click"
+                                            Padding="6,3" Margin="0,0,4,2" FontSize="11" Cursor="Hand"
+                                            BorderBrush="#002c5f" BorderThickness="1">
+                                        <Button.Background>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Background>
+                                        <Button.Foreground>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}" ConverterParameter="fg">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Foreground>
+                                    </Button>
+                                    <Button Content="All-in-one 문서" Click="DocumentOutputButton_Click"
+                                            Padding="6,3" Margin="0,0,4,2" FontSize="11" Cursor="Hand"
+                                            BorderBrush="#002c5f" BorderThickness="1">
+                                        <Button.Background>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Background>
+                                        <Button.Foreground>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}" ConverterParameter="fg">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Foreground>
+                                    </Button>
+                                    <Button Content="SW 빌드 체크 시트" Click="DocumentOutputButton_Click"
+                                            Padding="6,3" Margin="0,0,4,2" FontSize="11" Cursor="Hand"
+                                            BorderBrush="#002c5f" BorderThickness="1">
+                                        <Button.Background>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Background>
+                                        <Button.Foreground>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}" ConverterParameter="fg">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Foreground>
+                                    </Button>
+                                    <Button Content="LCR 심의회 회의록" Click="DocumentOutputButton_Click"
+                                            Padding="6,3" Margin="0,0,4,2" FontSize="11" Cursor="Hand"
+                                            BorderBrush="#002c5f" BorderThickness="1">
+                                        <Button.Background>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Background>
+                                        <Button.Foreground>
+                                            <MultiBinding Converter="{StaticResource OutputBtnBrush}" ConverterParameter="fg">
+                                                <Binding Path="OutputPath"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Content"/>
+                                            </MultiBinding>
+                                        </Button.Foreground>
+                                    </Button>
+                                </WrapPanel>
 
-                            <!-- 검색 입력 + 드롭다운 -->
-                            <Grid IsEnabled="{Binding CanEdit}">
-                                <TextBox Text="{Binding ParticipantSearchText, UpdateSourceTrigger=PropertyChanged}"
-                                         Padding="6,4" Margin="0,0,0,4">
+                                <!-- 기타 유형: TextBox -->
+                                <TextBox Text="{Binding OutputPath, UpdateSourceTrigger=PropertyChanged}"
+                                         IsEnabled="{Binding CanEdit}" Padding="4,3">
                                     <TextBox.Style>
                                         <Style TargetType="TextBox">
                                             <Style.Triggers>
-                                                <Trigger Property="Text" Value="">
-                                                    <Setter Property="Background">
-                                                        <Setter.Value>
-                                                            <VisualBrush Stretch="None" AlignmentX="Left">
-                                                                <VisualBrush.Visual>
-                                                                    <TextBlock Text="이름으로 참여자 검색..." Foreground="#aaa" Margin="8,4"/>
-                                                                </VisualBrush.Visual>
-                                                            </VisualBrush>
-                                                        </Setter.Value>
-                                                    </Setter>
-                                                </Trigger>
+                                                <DataTrigger Binding="{Binding IsBA1Type}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsBA2Type}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </TextBox.Style>
                                 </TextBox>
-                                <ListBox ItemsSource="{Binding ParticipantSearchResults}"
-                                         Visibility="{Binding IsParticipantSearchVisible, Converter={StaticResource BoolToVis}}"
-                                         MaxHeight="160" VerticalAlignment="Top" Margin="0,32,0,0"
-                                         Panel.ZIndex="10"
-                                         BorderBrush="#002c5f" BorderThickness="1">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <Button Content="{Binding Name}"
-                                                    Command="{Binding DataContext.AddParticipantCommand,
-                                                        RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                    CommandParameter="{Binding}"
-                                                    BorderThickness="0" Background="Transparent"
-                                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                                                    Padding="6,4" Cursor="Hand"/>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
+                            </Grid>
+                        </Grid>
+
+                        <!-- 참여자 섹션 -->
+                        <StackPanel Margin="0,6,0,0">
+                            <!-- 참여자 헤더 + 검색 입력 (같은 행) -->
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="참여자" Style="{StaticResource SectionHeader}"
+                                           Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <Grid Grid.Column="1" IsEnabled="{Binding CanEdit}">
+                                    <TextBox Text="{Binding ParticipantSearchText, UpdateSourceTrigger=PropertyChanged}"
+                                             Padding="6,4">
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox">
+                                                <Style.Triggers>
+                                                    <Trigger Property="Text" Value="">
+                                                        <Setter Property="Background">
+                                                            <Setter.Value>
+                                                                <VisualBrush Stretch="None" AlignmentX="Left">
+                                                                    <VisualBrush.Visual>
+                                                                        <TextBlock Text="이름으로 참여자 검색..." Foreground="#aaa" Margin="8,4"/>
+                                                                    </VisualBrush.Visual>
+                                                                </VisualBrush>
+                                                            </Setter.Value>
+                                                        </Setter>
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
+                                    <ListBox ItemsSource="{Binding ParticipantSearchResults}"
+                                             Visibility="{Binding IsParticipantSearchVisible, Converter={StaticResource BoolToVis}}"
+                                             MaxHeight="160" VerticalAlignment="Top" Margin="0,30,0,0"
+                                             Panel.ZIndex="10"
+                                             BorderBrush="#002c5f" BorderThickness="1">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Content="{Binding Name}"
+                                                        Command="{Binding DataContext.AddParticipantCommand,
+                                                            RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"
+                                                        BorderThickness="0" Background="Transparent"
+                                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                        Padding="6,4" Cursor="Hand"/>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </Grid>
                             </Grid>
 
                             <!-- 참여자 Chip 목록 -->
@@ -244,25 +418,6 @@
                             </ItemsControl>
                         </StackPanel>
 
-                        <!-- 임시저장(수정) / 취소 / 결재 요청 / 삭제 버튼 -->
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-                            <Button Content="삭제" Command="{Binding DeleteCommand}"
-                                    Style="{StaticResource PanelButton}" Background="#f44336" Foreground="White"
-                                    Visibility="{Binding CanDelete}"/>
-                            <Button Content="{Binding SaveButtonText}" Command="{Binding SaveCommand}"
-                                    Visibility="{Binding CanSave}"
-                                    Style="{StaticResource PanelButton}"
-                                    Background="#4CAF50" Foreground="White"/>
-                            <Button Content="결재 요청 취소" Command="{Binding CancelSubmitCommand}"
-                                    Visibility="{Binding CanCancel}"
-                                    Style="{StaticResource PanelButton}"
-                                    Background="#f44336" Foreground="White"/>
-                            <Button Content="결재 요청" Command="{Binding SubmitCommand}"
-                                    Visibility="{Binding CanSubmit}"
-                                    IsEnabled="{Binding CanRequestApproval}"
-                                    Style="{StaticResource PanelButton}"
-                                    Background="#002c5f" Foreground="White"/>
-                        </StackPanel>
                     </StackPanel>
                 </Border>
 
@@ -272,7 +427,8 @@
                     <StackPanel>
 
                         <!-- 결재자 -->
-                        <TextBlock Text="결재자:" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
+                        <TextBlock Text="결재자 *:" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"
+                                   Foreground="#c0392b"/>
                         <ComboBox ItemsSource="{Binding AvailableApprovers}"
                                   SelectedItem="{Binding SelectedApprover}"
                                   DisplayMemberPath="Name"
@@ -298,23 +454,40 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- 승인 / 반려 버튼 -->
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
-                                    Margin="0,0,0,14"
-                                    Visibility="{Binding CanApprove}">
-                            <Button Content="승인" Command="{Binding ApproveCommand}"
-                                    Style="{StaticResource PanelButton}"
-                                    Background="#2196F3" Foreground="White"/>
-                            <Button Content="반려" Command="{Binding RejectCommand}"
-                                    Style="{StaticResource PanelButton}"
-                                    Background="#f44336" Foreground="White"/>
-                        </StackPanel>
-
                         <!-- 결재 일시 (승인완료 또는 반려) -->
                         <StackPanel Visibility="{Binding ShowApprovalDate, Converter={StaticResource BoolToVis}}">
                             <TextBlock Text="결재 일시" FontSize="11" Foreground="#888" Margin="0,0,0,4"/>
                             <TextBlock Text="{Binding ApprovalDate}" FontSize="13" FontWeight="SemiBold"/>
                         </StackPanel>
+
+                        <!-- 액션 버튼 (모두 같은 행: 삭제 / 수정(임시저장) / 결재요청취소 / 결재요청 / 승인 / 반려) -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+                            <Button Content="삭제" Command="{Binding DeleteCommand}"
+                                    Style="{StaticResource PanelButton}" Background="#f44336" Foreground="White"
+                                    Visibility="{Binding CanDelete}"/>
+                            <Button Content="{Binding SaveButtonText}" Command="{Binding SaveCommand}"
+                                    Visibility="{Binding CanSave}"
+                                    Style="{StaticResource PanelButton}"
+                                    Background="#4CAF50" Foreground="White"/>
+                            <Button Content="결재 요청 취소" Command="{Binding CancelSubmitCommand}"
+                                    Visibility="{Binding CanCancel}"
+                                    Style="{StaticResource PanelButton}"
+                                    Background="#f44336" Foreground="White"/>
+                            <Button Content="결재 요청" Command="{Binding SubmitCommand}"
+                                    Visibility="{Binding CanSubmit}"
+                                    IsEnabled="{Binding CanRequestApproval}"
+                                    Style="{StaticResource PanelButton}"
+                                    Background="#002c5f" Foreground="White"/>
+                            <Button Content="승인" Command="{Binding ApproveCommand}"
+                                    Visibility="{Binding CanApprove}"
+                                    Style="{StaticResource PanelButton}"
+                                    Background="#2196F3" Foreground="White"/>
+                            <Button Content="반려" Command="{Binding RejectCommand}"
+                                    Visibility="{Binding CanApprove}"
+                                    Style="{StaticResource PanelButton}"
+                                    Background="#f44336" Foreground="White"/>
+                        </StackPanel>
+
                     </StackPanel>
                 </Border>
             </Grid>
@@ -340,8 +513,17 @@
                               AutoGenerateColumns="False" CanUserAddRows="False"
                               HeadersVisibility="Column" GridLinesVisibility="Horizontal"
                               BorderThickness="0" CanUserSortColumns="False"
+                              EnableRowVirtualization="False"
                               IsReadOnly="{Binding IsReadOnly}"
-                              BeginningEdit="Checklist_BeginningEdit">
+                              BeginningEdit="Checklist_BeginningEdit"
+                              PreparingCellForEdit="Checklist_PreparingCellForEdit">
+                        <!-- 셀 클릭 한 번에 편집 진입 (GotFocus: 행 선택 완료 후 BeginEdit 호출) -->
+                        <DataGrid.CellStyle>
+                            <Style TargetType="DataGridCell">
+                                <EventSetter Event="GotFocus"
+                                             Handler="ChecklistCell_GotFocus"/>
+                            </Style>
+                        </DataGrid.CellStyle>
                         <!-- 헤더 행 (IsHeader=true): 굵은 글씨 + 배경색 -->
                         <DataGrid.RowStyle>
                             <Style TargetType="DataGridRow">
@@ -355,9 +537,38 @@
                             </Style>
                         </DataGrid.RowStyle>
                         <DataGrid.Columns>
+                            <!-- No. -->
                             <DataGridTextColumn Header="No." Binding="{Binding RowNo}" Width="60" IsReadOnly="True"/>
-                            <DataGridTextColumn Header="확인항목" Binding="{Binding CheckItem}" Width="*" IsReadOnly="True"/>
-                            <DataGridTextColumn Header="산출물" Binding="{Binding OutputContent}" Width="150"/>
+
+                            <!-- 확인항목: 긴 텍스트 줄바꿈 + \n 개행 지원 -->
+                            <DataGridTemplateColumn Header="확인항목" Width="*" IsReadOnly="True">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding CheckItem}" TextWrapping="Wrap"
+                                                   Padding="4,3" VerticalAlignment="Top"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- 산출물: 줄바꿈 지원 TextBox -->
+                            <DataGridTemplateColumn Header="산출물" Width="120">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding OutputContent}" TextWrapping="Wrap"
+                                                   Padding="4,3" VerticalAlignment="Top"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding OutputContent, UpdateSourceTrigger=PropertyChanged}"
+                                                 TextWrapping="Wrap" AcceptsReturn="True"
+                                                 MinHeight="36" MaxHeight="150"
+                                                 VerticalScrollBarVisibility="Auto" Padding="4,3"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
+
+                            <!-- 평가: ComboBox -->
                             <DataGridComboBoxColumn Header="평가" Width="80">
                                 <DataGridComboBoxColumn.ItemsSource>
                                     <x:Array Type="sys:String" xmlns:sys="clr-namespace:System;assembly=mscorlib">
@@ -372,7 +583,24 @@
                                     <Binding Path="EvaluationCode"/>
                                 </DataGridComboBoxColumn.SelectedItemBinding>
                             </DataGridComboBoxColumn>
-                            <DataGridTextColumn Header="비고" Binding="{Binding Remarks}" Width="200"/>
+
+                            <!-- 비고: 줄바꿈 지원 -->
+                            <DataGridTemplateColumn Header="비고" Width="200">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Remarks}" TextWrapping="Wrap"
+                                                   Padding="4,3" VerticalAlignment="Top"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                                <DataGridTemplateColumn.CellEditingTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding Remarks, UpdateSourceTrigger=PropertyChanged}"
+                                                 TextWrapping="Wrap" AcceptsReturn="True"
+                                                 MinHeight="36" MaxHeight="150"
+                                                 VerticalScrollBarVisibility="Auto" Padding="4,3"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellEditingTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>
@@ -384,9 +612,11 @@
                     Visibility="{Binding ShowDescription}">
                 <StackPanel>
                     <TextBlock Text="설명:" Style="{StaticResource FieldLabel}" Margin="0,0,0,4"/>
-                    <TextBox Text="{Binding Description, UpdateSourceTrigger=PropertyChanged}"
-                             IsEnabled="{Binding CanEdit}" AcceptsReturn="True" TextWrapping="Wrap"
-                             MinHeight="60" VerticalScrollBarVisibility="Auto"/>
+                    <!-- WebBrowser: HTML WYSIWYG 편집 (contentEditable). 고정 높이 필요 (HwndHost 특성) -->
+                    <Border BorderBrush="#ccc" BorderThickness="1" Height="160">
+                        <WebBrowser x:Name="DescriptionBrowser"
+                                    LoadCompleted="DescriptionBrowser_LoadCompleted"/>
+                    </Border>
                 </StackPanel>
             </Border>
 

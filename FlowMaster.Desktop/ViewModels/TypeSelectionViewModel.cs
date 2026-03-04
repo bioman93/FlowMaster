@@ -11,6 +11,7 @@ using CommunityToolkit.Mvvm.Input;
 using FlowMaster.Domain.Interfaces;
 using FlowMaster.Domain.Models;
 using FlowMaster.Infrastructure.Repositories;
+using FlowMaster.Infrastructure.Services;
 using Microsoft.Win32;
 
 namespace FlowMaster.Desktop.ViewModels
@@ -19,8 +20,18 @@ namespace FlowMaster.Desktop.ViewModels
     {
         private readonly ExternalDbRepository _externalDb;
         private readonly IApprovalRepository _internalDb;
+        private readonly ApprovalApiClient _apiClient;
         private readonly Action<string, ApprovalDocument> _onTypeSelected;
         private readonly Action _onCancel;
+
+        // 동적 템플릿 목록 (API 로드, 실패 시 하드코딩 폴백)
+        private ObservableCollection<FmChecklistTemplateDto> _availableTemplates
+            = new ObservableCollection<FmChecklistTemplateDto>();
+        public ObservableCollection<FmChecklistTemplateDto> AvailableTemplates
+        {
+            get => _availableTemplates;
+            set => SetProperty(ref _availableTemplates, value);
+        }
 
         /// <summary>전체 문서 목록 (검색 소스)</summary>
         private List<ApprovalDocument> _allDocuments = new List<ApprovalDocument>();
@@ -95,10 +106,12 @@ namespace FlowMaster.Desktop.ViewModels
             ExternalDbRepository externalDb,
             IApprovalRepository internalDb,
             Action<string, ApprovalDocument> onTypeSelected,
-            Action onCancel)
+            Action onCancel,
+            ApprovalApiClient apiClient = null)
         {
             _externalDb = externalDb;
             _internalDb = internalDb;
+            _apiClient = apiClient;
             _onTypeSelected = onTypeSelected;
             _onCancel = onCancel;
 
@@ -108,8 +121,9 @@ namespace FlowMaster.Desktop.ViewModels
             SelectCloneDocumentCommand = new RelayCommand<ApprovalDocument>(OnCloneDocumentSelected);
             ClearCloneSelectionCommand = new RelayCommand(ClearCloneSelection);
 
-            // 항상 내부 DB에서 문서 목록 로드 (외부 DB 연결 시 갱신)
+            // 항상 내부 DB에서 문서 목록 로드 + 템플릿 목록 로드
             _ = LoadDocumentsAsync();
+            _ = LoadTemplatesAsync();
 
             if (_externalDb != null && _externalDb.IsConnected)
             {
@@ -225,10 +239,52 @@ namespace FlowMaster.Desktop.ViewModels
 
                 OnPropertyChanged(nameof(HasDocuments));
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                MessageBox.Show($"문서 목록 로드 실패: {ex.Message}", "오류", MessageBoxButton.OK, MessageBoxImage.Error);
+                // API 미연결 상태에서 조용히 빈 목록으로 폴백 (팝업 없음)
+                _allDocuments = new List<ApprovalDocument>();
+                OnPropertyChanged(nameof(HasDocuments));
             }
         }
+
+        private async Task LoadTemplatesAsync()
+        {
+            // API 미연결 시 하드코딩 폴백 (BA1, BA2)
+            if (_apiClient == null)
+            {
+                Application.Current.Dispatcher.Invoke(() => SetFallbackTemplates());
+                return;
+            }
+            try
+            {
+                var all = await _apiClient.FmGetAllChecklistTemplatesAsync();
+                // 최신 버전만, TemplateCode 중복 제거
+                var latest = all
+                    .Where(t => t.IsLatest)
+                    .OrderBy(t => t.TemplateCode)
+                    .ToList();
+
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    AvailableTemplates = new ObservableCollection<FmChecklistTemplateDto>(
+                        latest.Count > 0 ? latest : GetFallbackTemplates());
+                });
+            }
+            catch
+            {
+                Application.Current.Dispatcher.Invoke(() => SetFallbackTemplates());
+            }
+        }
+
+        private void SetFallbackTemplates()
+        {
+            AvailableTemplates = new ObservableCollection<FmChecklistTemplateDto>(GetFallbackTemplates());
+        }
+
+        private static List<FmChecklistTemplateDto> GetFallbackTemplates() => new List<FmChecklistTemplateDto>
+        {
+            new FmChecklistTemplateDto { TemplateCode = "BA1", Name = "BA1 - 기능요구사항 사전검토", Version = 1, IsLatest = true },
+            new FmChecklistTemplateDto { TemplateCode = "BA2", Name = "BA2 - 배포작업 사전검토",    Version = 1, IsLatest = true },
+        };
     }
 }

@@ -138,4 +138,64 @@ namespace FlowMaster.Infrastructure.Services
     {
         public string UserId { get; set; }
     }
+
+    // ─── 체크리스트 템플릿 DTO ──────────────────────────────────────
+
+    /// <summary>체크리스트 템플릿 DTO</summary>
+    public class FmChecklistTemplateDto
+    {
+        public int TemplateId { get; set; }
+        public string TemplateCode { get; set; }
+        public string Name { get; set; }
+        public int Version { get; set; }
+        public bool IsLatest { get; set; }
+        public string CreatedAt { get; set; }
+        /// <summary>문서 작성 시 설명(Description) 입력란 표시 여부</summary>
+        public bool HasDescription { get; set; }
+        public List<FmChecklistTemplateItemDto> Items { get; set; }
+            = new List<FmChecklistTemplateItemDto>();
+    }
+
+    /// <summary>체크리스트 템플릿 항목 DTO</summary>
+    public class FmChecklistTemplateItemDto
+    {
+        public int ItemId { get; set; }
+        public int TemplateId { get; set; }
+        public string RowNo { get; set; }
+        public string CheckItem { get; set; }
+        public string OutputContent { get; set; }
+        /// <summary>평가 기본값 (+, (+), (-), -, nb). 문서 작성 시 초기값.</summary>
+        public string EvaluationCode { get; set; }
+        /// <summary>비고 기본값 (MPI/GDI 무관 공통)</summary>
+        public string Remarks { get; set; }
+        /// <summary>MPI 전용 비고 기본값. 값이 있으면 InjType=MPI 문서에서 Remarks 대신 사용.</summary>
+        public string RemarksMpi { get; set; }
+        /// <summary>GDI 전용 비고 기본값. 값이 있으면 InjType=GDI 문서에서 Remarks 대신 사용.</summary>
+        public string RemarksGdi { get; set; }
+        public int DisplayOrder { get; set; }
+
+        /// <summary>RowNo에 '.'이 없으면 메인(헤더) 항목 (예: "1", "2")</summary>
+        public bool IsHeader => !string.IsNullOrEmpty(RowNo) && !RowNo.Contains(".");
+    }
+
+    /// <summary>템플릿 저장 요청</summary>
+    public class FmSaveTemplateRequest
+    {
+        public FmChecklistTemplateDto Template { get; set; }
+        public bool CreateNewVersion { get; set; }
+    }
+
+    // ─── 산출물 경로 설정 DTO ────────────────────────────────────────
+
+    /// <summary>산출물 버튼 경로 설정 DTO (FM_OutputPathConfig)</summary>
+    public class FmOutputPathConfigDto
+    {
+        public int Id { get; set; }
+        public string TableType { get; set; }
+        public string ButtonName { get; set; }
+        public string Path { get; set; }
+        /// <summary>"SVN" 또는 "Explorer"</summary>
+        public string LaunchType { get; set; } = "Explorer";
+        public int DisplayOrder { get; set; }
+    }
 }

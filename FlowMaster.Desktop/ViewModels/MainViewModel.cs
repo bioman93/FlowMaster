@@ -288,11 +288,13 @@ namespace FlowMaster.Desktop.ViewModels
             _currentDashboardVm?.StopPolling(); // 대시보드 이탈 시 폴링 중지
             Title = "FlowMaster - 테스트 결과 입력";
             var internalDbForType = _serviceProvider.GetRequiredService<IApprovalRepository>();
+            var apiClientForType  = _serviceProvider.GetRequiredService<ApprovalApiClient>();
             var vm = new TypeSelectionViewModel(
                 _externalDb,
                 internalDbForType,
                 OnTypeSelected,
-                NavigateToDashboard
+                NavigateToDashboard,
+                apiClientForType
             );
             CurrentView = vm;
         }

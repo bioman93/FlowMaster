@@ -75,28 +75,24 @@ namespace FlowMaster.Infrastructure.Repositories
             SyncError           = dto.SyncError,
         };
 
+        // CheckItem/OutputContent/DisplayOrder는 템플릿에서 복원하므로 전송하지 않음
         private static FmChecklistItemDto ToDto(ChecklistItem item) => new FmChecklistItemDto
         {
-            ItemId          = item.ItemId,
-            DocId           = item.DocId,
-            RowNo           = item.RowNo,
-            CheckItem       = item.CheckItem,
-            OutputContent   = item.OutputContent,
-            EvaluationCode  = item.EvaluationCode,
-            Remarks         = item.Remarks,
-            DisplayOrder    = item.DisplayOrder,
+            ItemId         = item.ItemId,
+            DocId          = item.DocId,
+            RowNo          = item.RowNo,
+            EvaluationCode = item.EvaluationCode,
+            Remarks        = item.Remarks,
         };
 
+        // RowNo/EvaluationCode/Remarks만 복원 - CheckItem 등은 ViewModel에서 템플릿으로 채움
         private static ChecklistItem FromDto(FmChecklistItemDto dto) => new ChecklistItem
         {
-            ItemId          = dto.ItemId,
-            DocId           = dto.DocId,
-            RowNo           = dto.RowNo,
-            CheckItem       = dto.CheckItem,
-            OutputContent   = dto.OutputContent,
-            EvaluationCode  = dto.EvaluationCode,
-            Remarks         = dto.Remarks,
-            DisplayOrder    = dto.DisplayOrder,
+            ItemId         = dto.ItemId,
+            DocId          = dto.DocId,
+            RowNo          = dto.RowNo,
+            EvaluationCode = dto.EvaluationCode,
+            Remarks        = dto.Remarks,
         };
 
         private static FmApprovalLineDto ToDto(ApprovalLine line) => new FmApprovalLineDto
@@ -140,7 +136,15 @@ namespace FlowMaster.Infrastructure.Repositories
         public async Task<ApprovalDocument> GetDocumentAsync(int docId)
         {
             var dto = await _client.FmGetDocumentAsync(docId);
-            return dto is null ? null : FromDto(dto);
+            if (dto is null) return null;
+
+            var doc = FromDto(dto);
+
+            // 체크리스트 함께 로드 (FmGetDocumentAsync에 포함되지 않으므로 별도 조회)
+            var checklistDtos = await _client.FmGetChecklistAsync(docId);
+            doc.ChecklistItems = checklistDtos.Select(FromDto).ToList();
+
+            return doc;
         }
 
         public async Task<List<ApprovalDocument>> GetAllDocumentsAsync()
